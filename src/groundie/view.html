@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>groundie blocks</title>
+<style>
+/* STYLE */
+body { padding: 0.75rem 1rem; }
+details.provenance { font-size: 0.875rem; color: #666; }
+details.provenance footer.provenance { margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+<main>Running blocks…</main>
+<script type="module">
+  import { App } from "https://unpkg.com/@modelcontextprotocol/ext-apps@2.0.3/dist/src/app-with-deps.js";
+  const main = document.querySelector("main");
+  const app = new App({ name: "groundie", version: "0.1.0" });
+  // Set before connect() so the first result isn't missed.
+  app.ontoolresult = ({ structuredContent, content }) => {
+    if (structuredContent?.html) main.innerHTML = structuredContent.html;
+    else main.textContent = content?.[0]?.text ?? "";
+  };
+  await app.connect();
+</script>
+</body>
+</html>

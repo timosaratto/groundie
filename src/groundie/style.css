@@ -1,0 +1,74 @@
+:root { color-scheme: light; }
+body {
+  margin: 0; padding: 2rem 1rem 4rem; background: #fff; color: #1a1a1a;
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1000px; margin: 0 auto; }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 1.25rem; letter-spacing: -0.01em; }
+p, ul, ol { margin: 0 0 1rem; max-width: 70ch; }
+h2 { font-size: 1.25rem; line-height: 1.3; margin: 2rem 0 0.75rem; }
+h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; }
+li { margin-bottom: 0.25rem; }
+a { color: #1a4fd6; }
+blockquote { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid #ddd; color: #555; }
+table {
+  border-collapse: collapse; width: 100%; margin: 0 0 2rem;
+  font-size: 0.875rem; font-variant-numeric: tabular-nums;
+}
+th, td { padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; border-bottom: 1px solid #e3e3e3; }
+th { position: sticky; top: 0; background: #f6f6f6; font-weight: 600; white-space: nowrap; border-bottom: 2px solid #ccc; }
+tbody tr:nth-child(even) { background: #fafafa; }
+tbody tr:hover { background: #f0f4ff; }
+td.empty { color: #888; font-style: italic; }
+td.num { text-align: right; white-space: nowrap; }
+th.num { text-align: right; }
+section.block { border: 1px solid #e3e3e3; border-radius: 8px; padding: 0.75rem 1rem; margin: 1.5rem 0 2rem; }
+section.block > table, section.block > svg.tree { margin-bottom: 0; }
+section.block > p.legend { margin: 0.5rem 0 0; }
+details.query { margin-top: 0.75rem; font-size: 0.875rem; color: #666; }
+details.query summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; cursor: pointer; list-style: none; }
+details.query summary::-webkit-details-marker { display: none; }
+details.query summary .toggle { white-space: nowrap; }
+details.query summary:hover .toggle { color: #1a1a1a; }
+details.query summary .toggle::after { content: "▸"; display: inline-block; width: 1em; margin-left: 0.3em; font-size: 1.4em; line-height: 1; vertical-align: -0.1em; text-align: center; }
+details.query[open] summary .toggle::after { content: "▾"; }
+details.query[open] summary { margin-bottom: 0.5rem; }
+details.query pre { background: #f6f6f6; padding: 0.75rem; overflow-x: auto; font-size: 0.8rem; color: #1a1a1a; }
+details.query ol { margin: 0 0 1rem; }
+table.matrix { width: auto; }
+table.matrix th { vertical-align: bottom; }
+table.matrix th.col { padding: 0.4rem 0.1rem; font-size: 0.75rem; }
+table.matrix th.col span { writing-mode: vertical-rl; transform: rotate(180deg); }
+table.matrix td { border: 1px solid #fff; }
+table.matrix td.cell { text-align: center; padding: 0; min-width: 1.35rem; height: 1.35rem; line-height: 1.35rem; font-size: 0.7rem; vertical-align: middle; }
+table.matrix td.num { min-width: 0; padding: 0 0.35rem; font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: right; }
+table.matrix tbody tr:nth-child(even) { background: none; }
+table.matrix tbody tr:hover td:not(.cell) { background: #f0f4ff; }
+p.legend { color: #666; font-size: 0.8rem; margin: -1.5rem 0 2rem; }
+/* Tree tip colours: the first three categorical slots, the most that stay distinct as any pair and under
+   colour-blindness (dataviz palette, validated all-pairs on white). More values share --tree-other. */
+:root { --tree-1: #2a78d6; --tree-2: #eb6834; --tree-3: #1baf7a; --tree-other: #898781; }
+svg.tree { display: block; max-width: 100%; height: auto; margin: 0 0 2rem; }
+svg.tree text { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #1a1a1a; }
+svg.tree text.head { fill: #666; font-weight: 600; }
+svg.tree text.unmatched { fill: #888; font-style: italic; }
+svg.tree text.scale { fill: #666; }
+svg.tree .branch { fill: none; stroke: #1a1a1a; stroke-width: 1.25; stroke-linecap: square; }
+svg.tree .leader { fill: none; stroke: #b5b5b5; stroke-width: 1; stroke-dasharray: 1 3; }
+svg.tree path.scale { fill: none; stroke: #666; stroke-width: 1.25; }
+.tree-dot { stroke: #fff; stroke-width: 1.5; }
+.tree-dot.c1 { fill: var(--tree-1); }
+.tree-dot.c2 { fill: var(--tree-2); }
+.tree-dot.c3 { fill: var(--tree-3); }
+.tree-dot.other { fill: var(--tree-other); }
+.tree-dot.null { fill: #fff; stroke: var(--tree-other); stroke-width: 1.5; }
+p.legend svg.swatch { vertical-align: -1px; margin: 0 0.3em 0 0.6em; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+footer.provenance { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e3e3e3; font-size: 0.875rem; color: #666; }
+footer.provenance h2 { font-size: 1rem; color: #1a1a1a; margin: 0 0 0.5rem; }
+footer.provenance table { margin-bottom: 1rem; }
+@media print {
+  body { padding: 0; font-size: 11pt; }
+  th { position: static; }
+  tr { break-inside: avoid; }
+}

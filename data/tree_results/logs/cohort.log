@@ -1,0 +1,11 @@
+Neighbour-joining tree of the ten genomes from mash distances.
+Built 2026-09-27T11:25:32Z on arm64 macOS.
+
+Steps:
+  mash sketch -o cohort -s 10000 -k 21 genomes/*.fa.gz        (mash 2.3, conda env biop)
+  mash triangle cohort.msh > cohort.phylip                      (lower-triangular)
+  mash triangle -E cohort.msh > cohort.mash_dist.tsv            (edge list: ref, query, distance, p, shared)
+  python: expand to a square PHYLIP matrix, names = accession   (paths and .fa.gz stripped)
+  quicktree -in m -out t cohort.square.phylip > cohort.nwk      (quicktree 2.5, conda env bioreport-tree)
+
+The tree is unrooted (trifurcating root as quicktree writes it), branch lengths are mash distances.

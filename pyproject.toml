@@ -1,0 +1,23 @@
+[project]
+name = "groundie"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "duckdb>=1.5.5",
+    "markdown-it-py>=4.2.0",
+    "mcp>=2.2.0",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+groundie = "groundie.cli:main"
+groundie-mcp = "groundie.mcp_app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

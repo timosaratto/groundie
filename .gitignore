@@ -1,0 +1,21 @@
+.venv
+.DS_Store
+__pycache__
+.pytest_cache
+
+# generated reports
+report*.html
+
+# Python
+*.egg-info/
+.ruff_cache/
+
+# editors
+.vscode/settings.json
+.idea/
+
+# private working notes, evals (not for the public repo)
+private/
+
+# local Claude Code settings
+.claude/

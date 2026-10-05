@@ -1,0 +1,10 @@
+Running: amrfinder -n /tmp/amrrun.WlNTcc/SAMD00654274.fa -O Staphylococcus_aureus --plus --name SAMD00654274 --threads 4 -o /tmp/amrrun.WlNTcc/SAMD00654274.tsv
+Software directory: /opt/homebrew/Caskroom/miniconda/base/envs/amrfinder/bin/
+Software version: 4.2.7
+Database directory: /opt/homebrew/Caskroom/miniconda/base/envs/amrfinder/share/amrfinderplus/data/2026-08-07.1
+Database version: 2026-08-07.1
+AMRFinder translated nucleotide and mutation search
+Running tblastn
+Running blastn
+Making report
+amrfinder took 14 seconds to complete
