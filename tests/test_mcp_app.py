@@ -31,8 +31,8 @@ def test_render_blocks_for_apps_host():
     assert not result.is_error
     text = result.content[0].text
     assert text.startswith("cohort.md:3: input mlst: 10 rows; columns: sample, scheme")
-    assert "\ncohort.md:53: tree phylogeny: 10 tips, 10 matched\n" in text
-    for shown in ("datatable st", "datatable summary_table", "matrix resistome"):
+    assert "\ncohort.md:52: tree phylogeny: 10 tips, 10 matched\n" in text
+    for shown in ("mlst_table st","datatable summary_table", "matrix resistome"):
         assert f"\n\n{shown}:\n" in text
     assert "\nsql summary:\n" not in text and "\ninput mlst:\n" not in text  # neither shown nor last
     html = result.structured_content["html"]

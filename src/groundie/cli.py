@@ -19,12 +19,16 @@ from markdown_it import MarkdownIt
 
 from groundie.adapters import ADAPTERS
 from groundie import query as q
-from groundie import tree
+from groundie import tables, tree
+from groundie.adapters import mlst
 from groundie.query import SpecError, ident
 
 BLOCK = re.compile(r"^```(\w+) (\w+)\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
-KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "datatable", "matrix", "amrfinder_matrix", "tree")
+KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "datatable", "matrix", "amrfinder_matrix",
+         "mlst_table", "tree")
 MATRICES = ("matrix", "amrfinder_matrix")
+TABLES = ("datatable", "mlst_table")
+SUGAR = {"amrfinder_matrix": "amrfinder", "mlst_table": "mlst"}  # a block kind for one adapter's input
 INPUT_KEYS = ("adapter", "path", "paths", "options")
 LAYOUT_KEYS = ("rows", "cols", "value", "scale", "digits", "mark", "pick", "symmetric")
 PICK = re.compile(r"(max|min)\((\w+)\)")
@@ -97,6 +101,20 @@ def amrfinder_matrix(name, block):
     rows = ["element_symbol"] if len(query.filters.get("element_type", [])) == 1 else ["element_type", "element_symbol"]
     query.columns = [*rows, "sample", "pct_identity", "pct_coverage"]
     return query, Layout(rows, "sample", mark={"column": "pct_coverage", "below": partial_below}, pick="max(pct_coverage)")
+
+
+MLST_TABLE_KEYS = ("source", "filters", "sort")
+
+
+def mlst_table(name, block):
+    """An mlst_table block as its query: every column of the mlst input. The tables are split at build."""
+    unknown = [k for k in block if k not in MLST_TABLE_KEYS]
+    if unknown:
+        raise SpecError(f"mlst_table {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
+                         f"{', '.join(MLST_TABLE_KEYS)}. For other columns, use a datatable")
+    query = q.normalize(name, block, "mlst_table")
+    query.columns = ["sample", "scheme", "sequence_type", *mlst.LOCI]
+    return query
 
 
 @dataclass
@@ -264,7 +282,9 @@ def parse_block(kind, name, text, line):
     if kind == "amrfinder_matrix":
         query, grid = amrfinder_matrix(name, block)
         return {"type": kind, "block": query, "layout": grid}
-    grid = layout(name, block) if kind == "matrix" else None
+    if kind == "mlst_table":
+        return {"type": kind, "block": mlst_table(name, block)}
+    grid =layout(name, block) if kind == "matrix" else None
     return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "matrix" else ()),
             "layout": grid}
 
@@ -298,13 +318,13 @@ def check_reads(name, segments):
                             else f"is a {source['type']} block")
                     raise SpecError(f"{who}: source {block.source!r} {what}; "
                                      "a tree block needs an input loaded by the newick adapter")
-            if seg["type"] == "amrfinder_matrix":
-                source = blocks[block.source]
-                if source["type"] != "input" or source["block"].adapter != "amrfinder":
+            if seg["type"] in SUGAR:
+                source, adapter = blocks[block.source], SUGAR[seg["type"]]
+                if source["type"] != "input" or source["block"].adapter != adapter:
                     what = (f"is loaded by adapter {source['block'].adapter!r}" if source["type"] == "input"
                             else f"is a {source['type']} block")
-                    raise SpecError(f"{who}: source {block.source!r} {what}; an amrfinder_matrix needs an "
-                                     "input loaded by the amrfinder adapter; narrow it with filters")
+                    raise SpecError(f"{who}: source {block.source!r} {what}; an {seg['type']} needs an "
+                                     f"input loaded by the {adapter} adapter; narrow it with filters")
         if seg["type"] != "tree":
             above.add(block.name)
 
@@ -537,12 +557,20 @@ def cell(value, tag="td", num=False):
     return f"<{tag}{cls}>{text}</{tag}>"
 
 
-def render_datatable(columns, rows):
-    """The datatable."""
+def header(name, label, num):
+    """A column header. A label other than the column's name keeps the name in its title."""
+    if label == name:
+        return cell(name, "th", num)
+    cls = ' class="num"' if num else ""
+    return f'<th{cls} title="{html.escape(name)}">{html.escape(label)}</th>'
+
+
+def render_datatable(columns, rows, caption=None):
+    """The datatable. columns are (name, label): the column, and the header shown."""
     numeric = [all(v is None or is_num(v) for v in col) and any(v is not None for v in col)
                for col in zip(*rows)] if rows else [False] * len(columns)
-    out = ["<table>\n<thead>\n"]
-    out.append("<tr>" + "".join(cell(c, "th", n) for c, n in zip(columns, numeric)) + "</tr>\n")
+    out = ["<table>\n" + (f"<caption>{html.escape(caption)}</caption>\n" if caption else "") + "<thead>\n"]
+    out.append("<tr>" + "".join(header(c, label, n) for (c, label), n in zip(columns, numeric)) + "</tr>\n")
     out.append("</thead>\n<tbody>\n")
     for row in rows:
         out.append("<tr>" + "".join(cell(v, "td", n) for v, n in zip(row, numeric)) + "</tr>\n")
@@ -806,8 +834,17 @@ def build_block(con, blocks, manifest, parts, seg):
     if seg["type"] != "query":
         data = con.execute(f"select * from {ident(block.name)}").fetchall()
     if seg["type"] == "datatable":
-        parts.append(framed("datatable", render_datatable(columns, data), q.to_yaml(block),
+        parts.append(framed("datatable", render_datatable([(c, c) for c in columns], data), q.to_yaml(block),
                             q.lineage(blocks, block.source)))
+    if seg["type"] == "mlst_table":
+        split = tables.mlst_tables(block.name, columns, data, bool(block.sort))
+        entry["tables"] = [{"caption": t.caption, "columns": [c for c, _ in t.columns], "rows": len(t.rows)}
+                           for t in split]
+        body = "".join(render_datatable(t.columns, t.rows, t.caption) for t in split) or render_datatable(
+            [(c, c) for c in columns], [])
+        parts.append(framed("datatable", body, q.to_yaml(block), q.lineage(blocks, block.source),
+                            () if block.sort else (tables.DEFAULT_ORDER,)))
+        return {**summary(rows, columns), "tables": len(split)}
     if seg["type"] in MATRICES:
         entry["layout"] = vars(seg["layout"])
         grid_yaml = q.dump({k: v for k, v in vars(seg["layout"]).items() if v not in (None, False)})
@@ -832,7 +869,8 @@ def summary_line(name, block):
     if block["kind"] == "tree":
         matched = "" if block["matched"] is None else f", {block['matched']} matched"
         return where + q.plural(block["tips"], "tip") + matched
-    return where + f"{q.plural(block['rows'], 'row')}; columns: {', '.join(block['output_columns'])}"
+    split = f" in {q.plural(block['tables'], 'table')}" if "tables" in block else ""
+    return where + f"{q.plural(block['rows'], 'row')}{split}; columns: {', '.join(block['output_columns'])}"
 
 
 def one_line(message):
