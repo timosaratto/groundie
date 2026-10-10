@@ -182,6 +182,16 @@ from mlst m, unnest(m.calls) as u(c)
 where not regexp_full_match(c.call, '\d+')
 ```
 
+A datatable shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
+datatable over an `mlst` input with no columns chosen shows `calls` that way. Select its fields, as above, or
+format it as text in SQL. Each genome's calls as one cell, `arcC:3, aroE:1, ...`:
+
+```sql
+select sample, scheme, sequence_type,
+       array_to_string(list_transform(calls, c -> c.locus || ':' || c.call), ', ') as calls
+from mlst
+```
+
 ## clusters
 
 Single-linkage clusters of samples from a table of pairwise distances, such as a `mash` input, SNP distances
