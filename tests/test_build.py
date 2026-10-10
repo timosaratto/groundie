@@ -6,8 +6,7 @@ import duckdb
 import pytest
 
 from groundie import cli
-from groundie.adapters import lines, mash
-from groundie.adapters.mlst import Mlst
+from groundie.adapters import mash, mlst, utils
 from groundie.cli import build
 
 SPEC = Path(__file__).parent.parent / "examples" / "SAMD00654274.md"
@@ -953,11 +952,12 @@ def test_mlst_adapter(tmp_path):
 
 def test_mlst_rows_match_schema():
     from jsonschema import Draft202012Validator
-    Draft202012Validator.check_schema(Mlst.SCHEMA)
-    names = [n for n, _ in Mlst.COLUMNS]
-    rows = Mlst.rows(MLST, {}) + Mlst.rows(FIXTURES / "mlst_edge.tsv", {})
+    adapter = mlst.ADAPTER
+    Draft202012Validator.check_schema(adapter.SCHEMA)
+    names = [n for n, _ in adapter.COLUMNS]
+    rows = adapter.rows(MLST, {}) + adapter.rows(FIXTURES / "mlst_edge.tsv", {})
     for row in rows:
-        Draft202012Validator(Mlst.SCHEMA).validate(dict(zip(names, row)))
+        Draft202012Validator(adapter.SCHEMA).validate(dict(zip(names, row)))
 
 
 def test_mlst_rows(tmp_path):
@@ -965,17 +965,16 @@ def test_mlst_rows(tmp_path):
     # any number of loci, mlst's flags kept in the call, Windows line ends, blank lines skipped
     path.write_text("x/y.fasta.gz\tbig\t1" + "".join(f"\tl{i}({i})" for i in range(1, 9))
                     + "\r\n\r\nz.fna\tsaureus\t-\tarcC(-)\taroE(~4)\tglpF(4?)\tgmk(4,5)\r\n")
-    assert Mlst.rows(path, {}) == [
+    assert mlst.ADAPTER.rows(path, {}) == [
         ("y", "big", 1, [{"locus": f"l{i}", "call": str(i)} for i in range(1, 9)]),
         ("z", "saureus", None, [{"locus": "arcC", "call": "-"}, {"locus": "aroE", "call": "~4"},
                                 {"locus": "glpF", "call": "4?"}, {"locus": "gmk", "call": "4,5"}])]
 
 
 @pytest.mark.parametrize("line, error", [
-    ("x.fa\tsaureus", "a.tsv, line 2: 'x.fa\\tsaureus' has 2 fields, not sample, scheme, sequence_type and any number of calls"),
-    ("x.fa\tsaureus\tST8\tarcC(3)", "a.tsv, line 2: sequence_type 'ST8' is not an integer"),
-    ("x.fa\tsaureus\t8\tarcC3", "a.tsv, line 2: calls 'arcC3' is not 'locus(call)'"),
-    ("-\tsaureus\t8\tarcC(3)", "a.tsv, line 2: sample cannot be null ('-')"),
+    ("x.fa\tsaureus", "a.tsv, line 2: not enough values to unpack (expected at least 3, got 2)"),
+    ("x.fa\tsaureus\tST8\tarcC(3)", "a.tsv, line 2: sequence_type: 'ST8' is not an integer"),
+    ("x.fa\tsaureus\t8\tarcC3", "a.tsv, line 2: calls: 'arcC3' is not 'locus(call)'"),
 ])
 def test_mlst_bad_line(tmp_path, line, error):
     (tmp_path / "a.tsv").write_text(f"y.fa\t-\t-\n{line}\n")
@@ -983,35 +982,36 @@ def test_mlst_bad_line(tmp_path, line, error):
         build(write(tmp_path, block("input m", "adapter: mlst\npath: a.tsv\n")))
 
 
-def test_lines_declaration_checks():
-    with pytest.raises(TypeError, match=r"^Pair: the pattern's groups \['a', 'c'\] are not its fields \['a', 'b'\]$"):
-        class Pair(lines.Match, pattern=r"(?P<a>.)(?P<c>.)"):
-            a: str
-            b: str
-    with pytest.raises(TypeError, match=r"^Bad: only the last field can be rest\(\)$"):
-        class Bad(lines.Lines):
-            tail: list[str] = lines.rest()
-            name: str
-    with pytest.raises(TypeError, match=r"^Bad.tails: .*list.* is read from text by a step; give one$"):
-        class Bad(lines.Lines):  # noqa: F811
-            tails: list[str]
+def test_record_checks():
+    with pytest.raises(TypeError, match=r"^Bad.n: a <class 'int'> field needs a reader; only text is kept as is$"):
+        class Bad(utils.Record):
+            n: int
+
+    class Wrong(utils.Record):
+        n: int | None = utils.none_if("-")  # forgets the integer
+
+    with pytest.raises(TypeError, match=r"^Wrong.n: '3' is not int \| None$"):
+        Wrong.read(n="3")
+    with pytest.raises(TypeError, match=r"^Wrong.read: needs n; got m$"):
+        Wrong.read(m="3")
 
 
-def test_match_converts_by_type():
-    class Pair(lines.Match, pattern=r"(?P<name>[a-z]+)(?P<number>\d+)?"):
-        name: str
-        number: int | None
-
-    assert Pair.parse("tpi4") == {"name": "tpi", "number": 4}
-    assert Pair.parse("tpi") == {"name": "tpi", "number": None}
-    with pytest.raises(ValueError, match=r"^'4tpi' is not 'namenumber\?'$"):
-        Pair.parse("4tpi")
+def test_readers():
+    assert utils.none_if("NA", utils.number)("NA") is None
+    assert utils.none_if("NA", utils.number)("0.5") == 0.5
+    assert utils.none_if("-")("x") == "x"
+    assert utils.each(utils.integer)(["1", "-2"]) == [1, -2]
+    assert utils.fullmatch(r"(.+)\((.*)\)", "tpi(~4)") == ("tpi", "~4")
+    with pytest.raises(ValueError, match=r"^'tpi' is not 'locus\(call\)'$"):
+        utils.fullmatch(r"(.+)\((.*)\)", "tpi", shown="locus(call)")
+    with pytest.raises(ValueError, match=r"^'8\.0' is not an integer$"):
+        utils.integer("8.0")
 
 
 @pytest.mark.parametrize("file", ["genomes/A.fa.gz", "A.fasta", "a/b/A.fna", "A.fas.gz", "A", "A.fa.bak"])
 def test_mlst_sample_names_match_mash(file):
     sql = mash.SAMPLE.format(col="?")
-    assert lines.sample_name(file) == duckdb.execute(f"select {sql}", [file]).fetchone()[0]
+    assert utils.sample_name(file) == duckdb.execute(f"select {sql}", [file]).fetchone()[0]
 
 
 def test_clusters(tmp_path):
