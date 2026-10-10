@@ -57,7 +57,8 @@ def test_build_amr_example():
     assert "<p>From amrfinder:</p>\n<pre>adapter: amrfinder\npath: ../data/amrfinder_results/SAMD00654274.tsv\n" in out
     assert "filters:\n  element_type: [AMR]" in out
     assert "?" not in out.split("<footer")[0]
-    assert "<td>saureus</td><td>8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>4</td><td>3</td>" in out
+    assert ("<td>saureus</td><td>8</td><td>arcC(3)</td><td>aroE(3)</td><td>glpF(1)</td><td>gmk(1)</td><td>pta(4)</td>"
+            "<td>tpi(4)</td><td>yqiL(3)</td>") in out
     assert "hits (" not in out  # the query block shows nothing
     strip = lambda s: re.sub(r"Built \S+ with", "Built <t> with", s)
     assert strip(build(SPEC)) == strip(out)
@@ -837,8 +838,9 @@ def test_mlst_adapter(tmp_path):
     page, manifest, con = cli.build_report(write(tmp_path, text))
     got = con.execute("select * from m").fetchall()
     assert [f["rows"] for f in manifest["inputs"]["m"]["files"]] == [10, 3]
-    assert got[0] == got[10] == ("SAMD00654274", "saureus", "8", "3", "3", "1", "1", "4", "4", "3")
-    assert got[11] == ("SAMD00654274", "saureus", "-", "3", "3", "1", "1", "4", "~4", "3")  # same name, its own call
+    loci = ("arcC(3)", "aroE(3)", "glpF(1)", "gmk(1)", "pta(4)")
+    assert got[0] == got[10] == ("SAMD00654274", "saureus", "8", *loci, "tpi(4)", "yqiL(3)")
+    assert got[11] == ("SAMD00654274", "saureus", "-", *loci, "tpi(~4)", "yqiL(3)")  # same name, its own call
     assert got[12] == ("unknown", "-", "-", None, None, None, None, None, None, None)  # no scheme found: kept
     # a scheme of more than seven loci is an error, not a silent truncation
     (tmp_path / "a.tsv").write_text("x.fa\tbig\t1" + "\tl(1)" * 8 + "\n")
