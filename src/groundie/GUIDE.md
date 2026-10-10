@@ -36,6 +36,7 @@ columns: [sample, sequence_type]
 | `datatable` | A datatable | Yes: the rows it shows |
 | `matrix` | A grid | Yes: its query's rows, not the pivoted grid |
 | `amrfinder_matrix` | A gene × sample grid of AMRFinderPlus hits | Yes: as a `matrix` |
+| `mlst_table` | One datatable of mlst results per scheme, headed by its loci | Yes: its query's rows, not the split tables |
 | `tree` | A phylogeny | No |
 
 The source of a block is the block it reads, named by its `source:` key. Every block except a `tree` makes an
@@ -96,7 +97,7 @@ options: {null: NA}     # optional; only tsv and csv take options
 | Adapter | Files | SQL table |
 | --- | --- | --- |
 | `amrfinder` | AMRFinderPlus TSV, run with `--name` | The columns listed below. `NA` is read as null |
-| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(allele)` for each of seven loci | `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type`, then `locus_1` to `locus_7`, in mlst's order. All are text. `sequence_type` is `-` when none is assigned. A locus holds the allele only: the file's `arcC(3)` becomes `3`. mlst's flags stay: `arcC(~4)` becomes `~4`, likewise `4?` and `-`. A genome with no scheme found has null loci. A scheme with more than seven loci is an error |
+| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(allele)` for each of the scheme's loci | `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type`, then `locus_1` to `locus_<n>`, in mlst's order, where n is the most loci of any genome in the input: `locus_7` for a seven-locus scheme. All are text. `sequence_type` is `-` when none is assigned. A locus holds mlst's text as is: the locus name with the allele and mlst's flags, as in `arcC(3)`, `tpi(~4)`, `pta(4?)` and `gmk(-)`. A genome whose scheme has fewer loci, or with no scheme found, has null loci after its own |
 | `mash` | `mash dist` or `mash triangle -E` output, no header | `reference`, `query` (sample names: the directories and a `.fa`, `.fasta`, `.fna`, `.fas` or `.msh` extension, with or without `.gz`, are stripped), `distance`, `p_value`, `shared_hashes`, `sketch_hashes` |
 | `tsv`, `csv` | Any delimited file | `file` (the file's name), then the file's columns as named. Numbers are read as numbers |
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
@@ -288,6 +289,28 @@ partial_below: 80                         # optional: ◆ marks coverage below t
   `partial_below`).
 - 'View query' shows the `matrix` it stands for, every setting written out.
 
+## mlst_table
+
+mlst results as one datatable per scheme, captioned with the scheme. The scheme's locus names are the
+headers and the cells hold the alleles: the input's `arcC(3)` shows as `3` under `arcC`.
+
+```yaml
+source: mlst                  # an input loaded by the mlst adapter
+filters: {scheme: saureus}    # optional: any filters on the input's columns
+sort: [sample]                # optional
+```
+
+- It takes `source`, `filters` and `sort`. For other columns, write a `datatable`.
+- The columns are `Sample`, `ST`, then the scheme's loci. Each header keeps its column's name in its
+  `title`, such as `locus_1` for `arcC`.
+- Allele numbers compare only within a scheme, so each scheme gets its own table. Genomes with no scheme
+  found get the last table, `No scheme found`, with no loci.
+- Without `sort`, the tables go by how many genomes they hold, most first, then by scheme, and the rows by
+  sample. With `sort`, both follow the sorted result.
+- Filters and sort read the input's columns as they are: a locus is the text `tpi(~4)`, not `~4`.
+- Cells of one locus naming different loci within a scheme are an error.
+- A block that reads it gets its query's rows, as the input has them, not the split tables.
+
 ## tree
 
 ```yaml
@@ -312,7 +335,7 @@ A tip with no matching row is drawn and reported, not an error. Check the summar
 
 The output adds these itself, so leave them out of the prose:
 
-- under each datatable, matrix (an `amrfinder_matrix` included) and tree: its filters, its query, and its
+- under each datatable (an `mlst_table` included), matrix (an `amrfinder_matrix` included) and tree: its filters, its query, and its
   lineage, a walk back through its sources to the inputs, each with its settings or, for a `sql` block, its
   statement
 - in a built report: a provenance footer listing every data file with its hash
@@ -424,7 +447,8 @@ The text result, which only you see, holds:
 
 - one summary line per block, as the CLI prints them, with `blocks` as the file name for inline text
 - the warnings
-- the rows, as TSV, of each datatable and matrix (an `amrfinder_matrix` included), and of the last block
+- the rows, as TSV, of each datatable and matrix (an `mlst_table` and an `amrfinder_matrix` included: their
+  query's rows), and of the last block
   unless it is a tree: an `input`, `sql`, `query`, `clusters`, `checks` or `calls`. At most 200 rows per
   block; the rest are counted, not listed.
 

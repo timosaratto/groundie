@@ -29,8 +29,9 @@ def write(tmp_path, text):
 
 
 def rows(path):
-    """The row count of each datatable and matrix, from the manifest."""
-    return {b["name"]: b["rows"] for b in cli.build_report(path)[1]["blocks"] if b["kind"] in ("datatable", "matrix")}
+    """The row count of each datatable and matrix, an mlst_table included, from the manifest."""
+    return {b["name"]: b["rows"] for b in cli.build_report(path)[1]["blocks"]
+            if b["kind"] in ("datatable", "matrix", "mlst_table")}
 
 
 def details(out, kind, i=0):
@@ -57,7 +58,8 @@ def test_build_amr_example():
     assert "<p>From amrfinder:</p>\n<pre>adapter: amrfinder\npath: ../data/amrfinder_results/SAMD00654274.tsv\n" in out
     assert "filters:\n  element_type: [AMR]" in out
     assert "?" not in out.split("<footer")[0]
-    assert "<td>saureus</td><td>8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>4</td><td>3</td>" in out
+    assert "<caption>saureus</caption>" in out
+    assert "<tr><td>SAMD00654274</td><td>8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>4</td><td>3</td></tr>" in out
     assert "hits (" not in out  # the query block shows nothing
     strip = lambda s: re.sub(r"Built \S+ with", "Built <t> with", s)
     assert strip(build(SPEC)) == strip(out)
@@ -71,7 +73,8 @@ def test_build_cohort_example():
     assert "<p>From summary (ad hoc SQL):</p>\n<pre>select\n    m.sample," in out
     assert ('<tr><td>SAMD00654274</td><td>8</td><td class="num">13</td><td class="num">19</td>'
             '<td class="num">2</td></tr>') in out  # 13 AMR, 19 virulence, 2 stress in its amrfinder file
-    assert "<td>SAMD00654278</td><td>saureus</td><td>-</td>" in out
+    assert "<tr><td>SAMD00654278</td><td>-</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td>" in out
+    assert '<th title="locus_1">arcC</th>' in out and '<th title="locus_7">yqiL</th>' in out
     assert "mlst_results/SAMD00654356.tsv" in out
     assert "<p>From mlst:</p>\n<pre>adapter: mlst\npath: ../data/mlst_results/SAMD*.tsv\n" in out
 
@@ -180,6 +183,102 @@ def test_amrfinder_matrix_shape(tmp_path, body, error):
         build(write(tmp_path, text))
 
 
+SAUREUS = "arcC(3)\taroE(3)\tglpF(1)\tgmk({})\tpta({})\ttpi({})\tyqiL(3)"
+ECOLI = "adk(53)\tfumC(40)\tgyrB(47)\ticd(13)\tmdh(36)\tpurA(28)\trecA(29)"
+MLST_ROWS = [  # two schemes and a genome with none, mlst's allele flags, and not in name order
+    f"a/E2.fa\tecoli_achtman_4\t131\t{ECOLI}",
+    f"S1.fa\tsaureus\t8\t{SAUREUS.format(1, 4, '~4')}",
+    f"S2.fa.gz\tsaureus\t-\t{SAUREUS.format('-', '4?', '4,5')}",
+    f"E1.fa\tecoli_achtman_4\t10\t{ECOLI}",
+    f"S0.fa\tsaureus\t2725\t{SAUREUS.format(1, 4, 4)}",
+    "unknown.fa\t-\t-",
+]
+
+
+def mlst_spec(tmp_path, body, lines=MLST_ROWS):
+    (tmp_path / "m.tsv").write_text("".join(f"{line}\n" for line in lines))
+    return write(tmp_path, block("input mlst", "adapter: mlst\npath: m.tsv\n") + body)
+
+
+def captions(out):
+    return re.findall(r"<caption>([^<]+)</caption>", out)
+
+
+def first_cells(out):
+    return re.findall(r"<tr><td>([^<]+)</td>", out.split("<footer")[0])
+
+
+def test_mlst_table(tmp_path):
+    path = mlst_spec(tmp_path, block("mlst_table st", "source: mlst\n"))
+    out = build(path)
+    # by size, then by name; no scheme last; rows by sample
+    assert captions(out) == ["saureus", "ecoli_achtman_4", "No scheme found"]
+    assert first_cells(out) == ["S0", "S1", "S2", "E1", "E2", "unknown"]
+    assert ('<tr><th title="sample">Sample</th><th title="sequence_type">ST</th><th title="locus_1">arcC</th>'
+            '<th title="locus_2">aroE</th><th title="locus_3">glpF</th><th title="locus_4">gmk</th>') in out
+    assert '<th title="locus_1">adk</th>' in out and '<th title="locus_7">recA</th>' in out
+    assert "<tr><td>S1</td><td>8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td><td>3</td></tr>" in out
+    assert "<tr><td>S2</td><td>-</td><td>3</td><td>3</td><td>1</td><td>-</td><td>4?</td><td>4,5</td><td>3</td></tr>" in out
+    no_scheme = out.split("<caption>No scheme found</caption>")[1].split("</table>")[0]
+    assert '<th title="sample">Sample</th><th title="sequence_type">ST</th></tr>' in no_scheme  # no loci
+    assert "<tr><td>unknown</td><td>-</td></tr>" in no_scheme
+    assert out.count('<section class="block datatable">') == 1 and out.count("View query") == 1
+    assert "Tables by how many genomes they hold" in out
+    page, manifest, con = cli.build_report(path)
+    assert manifest["blocks"][1] == {"line": 5, "kind": "mlst_table", "name": "st", "rows": 6, "tables": 3,
+                                     "output_columns": ["sample", "scheme", "sequence_type", *[f"locus_{i}" for i in range(1, 8)]]}
+    assert [(t["caption"], t["rows"], len(t["columns"])) for t in manifest["queries"][0]["tables"]] == [
+        ("saureus", 3, 9), ("ecoli_achtman_4", 2, 9), ("No scheme found", 1, 2)]
+    assert cli.summary_line("spec.md", manifest["blocks"][1]).startswith("spec.md:5: mlst_table st: 6 rows in 3 tables; ")
+
+
+def test_mlst_table_loci_per_scheme(tmp_path):
+    lines = [*MLST_ROWS, "B1.fa\tborrelia\t1\t" + "\t".join(f"g{i}(1)" for i in range(1, 9))]  # eight loci
+    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\n"), lines))
+    borrelia = out.split("<caption>borrelia</caption>")[1].split("</table>")[0]
+    assert borrelia.count("</th>") == 10 and '<th title="locus_8">g8</th>' in borrelia
+    saureus = out.split("<caption>saureus</caption>")[1].split("</table>")[0]
+    assert saureus.count("</th>") == 9 and "locus_8" not in saureus  # its own seven loci only
+
+
+def test_mlst_table_sort_and_filters(tmp_path):
+    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nsort: [sequence_type]\n")))
+    assert captions(out) == ["saureus", "ecoli_achtman_4", "No scheme found"]  # first seen, no scheme still last
+    assert first_cells(out) == ["S2", "S0", "S1", "E1", "E2", "unknown"]  # text order: '-', '10', '131', '2725', '8'
+    assert "Tables by how many" not in out
+    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nfilters: {scheme: ecoli_achtman_4}\n")))
+    assert captions(out) == ["ecoli_achtman_4"] and first_cells(out) == ["E1", "E2"]
+    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nfilters: {sample: nope}\n")))
+    assert captions(out) == [] and '<td class="empty" colspan="10">No rows</td>' in out
+
+
+def test_mlst_table_as_source(tmp_path):
+    # a later block reads the query's rows, raw, not the split tables
+    body = block("mlst_table st", "source: mlst\n") + block("datatable t", "source: st\nfilters: {sample: S1}\n")
+    page, manifest, con = cli.build_report(mlst_spec(tmp_path, body))
+    assert con.execute("select * from t").fetchall() == [
+        ("S1", "saureus", "8", "arcC(3)", "aroE(3)", "glpF(1)", "gmk(1)", "pta(4)", "tpi(~4)", "yqiL(3)")]
+
+
+@pytest.mark.parametrize("body, error", [
+    ("source: mlst\ncolumns: [sample]\n", "mlst_table 'st': unknown key 'columns'; accepted: source, filters, sort"),
+    ("source: t\n", "mlst_table 'st': source 't' is loaded by adapter 'tsv'; an mlst_table needs an input loaded by the mlst adapter"),
+    ("source: q\n", "mlst_table 'st': source 'q' is a query block; an mlst_table needs an input"),
+])
+def test_mlst_table_shape(tmp_path, body, error):
+    (tmp_path / "t.tsv").write_text("n\n1\n")
+    head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
+    with pytest.raises(cli.SpecError, match=re.escape(error)):
+        build(mlst_spec(tmp_path, head + block("mlst_table st", body)))
+
+
+def test_mlst_table_loci_disagree(tmp_path):
+    lines = [MLST_ROWS[1], MLST_ROWS[4].replace("tpi(4)", "tpx(4)")]
+    with pytest.raises(cli.SpecError, match=re.escape(
+            "mlst_table 'st': scheme 'saureus': locus_6 names different loci: 'tpx(4)' in S0, 'tpi(~4)' in S1")):
+        build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nsort: [sample]\n"), lines))
+
+
 def test_matrix_default_order(tmp_path):
     amr = AMRFINDER.with_name("SAMD00654319.tsv")
     head = (block("input amrfinder", f"adapter: amrfinder\npaths: [{amr}, {AMRFINDER}]\n")
@@ -207,7 +306,8 @@ def test_matrix_without_value(tmp_path):
 
 
 def test_unknown_block(tmp_path):
-    with pytest.raises(ValueError, match="unknown block 'chart'.*known: input, sql, query, clusters, checks, calls, datatable, matrix, amrfinder_matrix, tree"):
+    with pytest.raises(ValueError, match="unknown block 'chart'.*known: input, sql, query, clusters, checks, calls, datatable, matrix, amrfinder_matrix, "
+                                         "mlst_table, tree"):
         build(spec(tmp_path, block("chart c", "source: amrfinder\n")))
 
 
@@ -742,22 +842,25 @@ def test_main_success(tmp_path, monkeypatch, capsys):
     assert lines[3].startswith("cohort.md:13: input tree: 18 rows; columns: file, tree, node, parent, label, branch_length, "
                                "support, is_tip, comment")
     assert lines[4:] == [
-        "cohort.md:22: datatable st: 10 rows; columns: sample, scheme, sequence_type, locus_1, locus_2, locus_3, locus_4, "
-        "locus_5, locus_6, locus_7",
-        "cohort.md:32: sql summary: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, stress_hits",
-        "cohort.md:45: datatable summary_table: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, "
+        "cohort.md:22: mlst_table st: 10 rows in 1 table; columns: sample, scheme, sequence_type, locus_1, locus_2, "
+        "locus_3, locus_4, locus_5, locus_6, locus_7",
+        "cohort.md:31: sql summary: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, stress_hits",
+        "cohort.md:44: datatable summary_table: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, "
         "stress_hits",
-        "cohort.md:53: tree phylogeny: 10 tips, 10 matched",
-        "cohort.md:65: matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
+        "cohort.md:52: tree phylogeny: 10 tips, 10 matched",
+        "cohort.md:64: matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
         "lowest_coverage, copies",
     ]
     assert out.read_text().startswith("<!doctype html>")
     data = json.loads(manifest.read_text())
     assert data["warnings"] == []
-    assert data["blocks"][6] == {"line": 53, "kind": "tree", "name": "phylogeny", "tips": 10, "matched": 10}
+    assert data["blocks"][3]["tables"] == 1
+    assert data["blocks"][6] == {"line": 52, "kind": "tree", "name": "phylogeny", "tips": 10, "matched": 10}
     assert data["blocks"][7]["output_columns"][-1] == "copies"
     assert data["queries"][-1]["layout"]["scale"] == [90, 100]
-    assert [q["kind"] for q in data["queries"]] == ["datatable", "datatable", "matrix"]
+    assert [q["kind"] for q in data["queries"]] == ["mlst_table", "datatable", "matrix"]
+    assert data["queries"][0]["tables"] == [{"caption": "saureus", "rows": 10, "columns": [
+        "sample", "sequence_type", "locus_1", "locus_2", "locus_3", "locus_4", "locus_5", "locus_6", "locus_7"]}]
     assert list(data["inputs"]) == ["mlst", "amrfinder", "tree"]
     assert data["inputs"]["tree"]["files"][0]["path"] == "../data/tree_results/cohort.nwk"
 
@@ -837,14 +940,22 @@ def test_mlst_adapter(tmp_path):
     page, manifest, con = cli.build_report(write(tmp_path, text))
     got = con.execute("select * from m").fetchall()
     assert [f["rows"] for f in manifest["inputs"]["m"]["files"]] == [10, 3]
-    assert got[0] == got[10] == ("SAMD00654274", "saureus", "8", "3", "3", "1", "1", "4", "4", "3")
-    assert got[11] == ("SAMD00654274", "saureus", "-", "3", "3", "1", "1", "4", "~4", "3")  # same name, its own call
+    loci = ("arcC(3)", "aroE(3)", "glpF(1)", "gmk(1)", "pta(4)")
+    assert got[0] == got[10] == ("SAMD00654274", "saureus", "8", *loci, "tpi(4)", "yqiL(3)")
+    assert got[11] == ("SAMD00654274", "saureus", "-", *loci, "tpi(~4)", "yqiL(3)")  # same name, its own call
     assert got[12] == ("unknown", "-", "-", None, None, None, None, None, None, None)  # no scheme found: kept
-    # a scheme of more than seven loci is an error, not a silent truncation
-    (tmp_path / "a.tsv").write_text("x.fa\tbig\t1" + "\tl(1)" * 8 + "\n")
-    text = block("input m", "adapter: mlst\npath: a.tsv\n") + block("datatable t", "source: m\n")
-    with pytest.raises(cli.SpecError, match="Expected Number of Columns: 10 Found: 11"):
-        cli.build_report(write(tmp_path, text))
+
+    def load(lines):
+        (tmp_path / "a.tsv").write_text(lines)
+        page, manifest, con = cli.build_report(write(tmp_path, block("input m", "adapter: mlst\npath: a.tsv\n")))
+        return manifest["blocks"][0]["output_columns"], con.execute("select * from m").fetchall()
+
+    # as many locus columns as the input's largest scheme has loci: none are cut off; Windows line ends too
+    columns, got = load("x.fa\tbig\t1" + "\tl(1)" * 8 + "\r\ny.fa\tsmall\t2" + "\tm(2)" * 6 + "\r\n")
+    assert columns == ["sample", "scheme", "sequence_type", *[f"locus_{i}" for i in range(1, 9)]]
+    assert got == [("x", "big", "1", *["l(1)"] * 8), ("y", "small", "2", *["m(2)"] * 6, None, None)]
+    columns, got = load("unknown.fa\t-\t-\n")  # nothing typed: no loci
+    assert columns == ["sample", "scheme", "sequence_type"] and got == [("unknown", "-", "-")]
 
 
 def test_clusters(tmp_path):
