@@ -2,7 +2,7 @@
 of the file each row came from."""
 
 NAME = "tsv"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = ("null", "header")  # null: the string read as null (DuckDB's default if absent); header: default true
 
 

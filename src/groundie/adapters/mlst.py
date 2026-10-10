@@ -1,7 +1,7 @@
 from groundie.adapters.mash import SAMPLE
 
 NAME = "mlst"
-VERSION = "0.5"
+VERSION = "preliminary"
 OPTIONS = ()
 
 # mlst's default output: no header; the file, the scheme, the ST, then 'locus(allele)' for each of the

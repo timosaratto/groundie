@@ -2,7 +2,7 @@
 one column is added first: 'file', the basename of the file each row came from."""
 
 NAME = "json"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = ()
 
 

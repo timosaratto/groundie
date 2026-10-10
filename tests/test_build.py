@@ -51,7 +51,7 @@ def test_build_amr_example():
     assert out.count("<h1>") == 1 and "<h1>AMR hits for SAMD00654274</h1>" in out  # the author's, from prose
     assert "<h2>Provenance</h2>" in out
     assert "<h2>AMR hits</h2>" in out
-    assert "amrfinder 0.1" in out
+    assert "amrfinder preliminary" in out
     assert rows(SPEC) == {"st": 1, "amr": 13, "virulence": 21}
     assert "<h2>Virulence and stress</h2>" in out
     assert "<p>From hits:</p>\n<pre>source: amrfinder\ncolumns: [element_symbol," in out
@@ -325,7 +325,7 @@ def test_tsv_over_amrfinder(tmp_path):
     assert rows(path) == {"hits": 13}
     assert "<tr><td>SAMD00654274.tsv</td>" in out
     assert "<th>Element symbol</th>" in out
-    assert "tsv 0.1" in out
+    assert "tsv preliminary" in out
     assert "<pre>adapter: tsv\npath: " in out and "options:\n  &#x27;null&#x27;: NA\n</pre>" in out
 
 
@@ -582,7 +582,7 @@ def test_cohort_tree():
     assert "#" not in figure  # colours come from style.css
     assert '<p class="legend">sequence_type: ' in out
     assert "other values, sharing one grey: 45, -</p>" in out
-    assert "<td>tree</td><td>newick 0.1</td><td><code>../data/tree_results/cohort.nwk</code>" in out
+    assert "<td>tree</td><td>newick preliminary</td><td><code>../data/tree_results/cohort.nwk</code>" in out
 
 
 def test_cohort_builds_identical():

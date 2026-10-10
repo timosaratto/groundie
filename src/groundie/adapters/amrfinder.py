@@ -1,5 +1,5 @@
 NAME = "amrfinder"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = ()
 
 CANONICAL_SQL = """
