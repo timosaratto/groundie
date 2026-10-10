@@ -1,5 +1,5 @@
 NAME = "mash"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = ()
 
 # `mash dist` or `mash triangle -E` output: no header; reference, query, distance, p-value, shared hashes

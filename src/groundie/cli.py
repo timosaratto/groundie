@@ -106,8 +106,7 @@ MLST_TABLE_KEYS = ("source", "filters", "sort")
 
 
 def mlst_table(name, block):
-    """An mlst_table block as its query: every column of the mlst input, whose loci are known only once it
-    is loaded. The tables are split at build."""
+    """An mlst_table block as its query: every column of the mlst input. The tables are split at build."""
     unknown = [k for k in block if k not in MLST_TABLE_KEYS]
     if unknown:
         raise SpecError(f"mlst_table {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
@@ -435,9 +434,7 @@ def load_input(con, block, base_dir):
             counts = insert_rows(con, block.name, adapter, [path for _, path in paths], block.options)
         else:
             literal = "[" + ", ".join(q.literal(path) for _, path in paths) + "]"
-            # an adapter with shape takes settings from the files themselves, such as mlst's number of loci
-            shape = adapter.shape(con, literal) if hasattr(adapter, "shape") else {}
-            sql = adapter.canonical_sql(block.options, **shape)
+            sql = adapter.canonical_sql(block.options)
             counts = [con.execute(f"select count(*) from ({sql.format(path=q.literal(path))})").fetchone()[0]
                       for _, path in paths]
             con.execute(f"create table {ident(block.name)} as {sql.format(path=literal)}")
@@ -552,8 +549,11 @@ def is_num(value):
 
 
 def cell(value, tag="td", num=False):
-    text = "" if value is None else html.escape(str(value))
-    cls = ' class="num"' if num else ""
+    """A table cell. A null data cell shows a muted en dash."""
+    null = value is None and tag == "td"
+    text = "–" if null else "" if value is None else html.escape(str(value))
+    classes = " ".join(c for c, on in (("num", num), ("null", null)) if on)
+    cls = f' class="{classes}"' if classes else ""
     return f"<{tag}{cls}>{text}</{tag}>"
 
 
@@ -679,9 +679,9 @@ def render_matrix(query, grid, columns, rows):
                     style = f' style="{shade(min(1, max(0, (v - low) / (high - low))))}"'
             elif grid.value:
                 v = c[grid.value]
-                text = "" if v is None else html.escape(
+                text = "–" if v is None else html.escape(
                     f"{v:.{grid.digits}f}" if is_num(v) and grid.digits is not None else str(v))
-                cls = "cell num"
+                cls = "cell num null" if v is None else "cell num"
             if grid.mark and is_num(c[grid.mark["column"]]) and c[grid.mark["column"]] < grid.mark["below"]:
                 text += '<span class="mark">◆</span>'
             out.append(f'<td class="{cls}" title="{html.escape(title)}"{style}>{text}</td>')

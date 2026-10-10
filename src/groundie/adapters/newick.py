@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 NAME = "newick"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = ()
 COLUMNS = (("file", "varchar"), ("tree", "integer"), ("node", "integer"), ("parent", "integer"),
            ("label", "varchar"), ("branch_length", "double"), ("support", "double"),

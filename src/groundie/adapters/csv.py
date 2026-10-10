@@ -3,7 +3,7 @@
 from groundie.adapters import tsv
 
 NAME = "csv"
-VERSION = "0.1"
+VERSION = "preliminary"
 OPTIONS = tsv.OPTIONS
 
 

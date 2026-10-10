@@ -17,7 +17,7 @@ path: ../data/tree_results/cohort.nwk
 
 ## Sequence types
 
-One row per genome, from mlst, one table per scheme, headed by the scheme's loci. An ST of `-` means none was assigned. In an allele, `~` marks a novel allele, `?` a partial match and `-` a missing one.
+One row per genome, from mlst, one table per scheme, headed by the scheme's loci. An empty ST means none was assigned. In a call, `~` marks a novel allele, `?` a partial match and `-` a missing one.
 
 ```mlst_table st
 source: mlst

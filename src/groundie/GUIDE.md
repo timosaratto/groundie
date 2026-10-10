@@ -97,7 +97,7 @@ options: {null: NA}     # optional; only tsv and csv take options
 | Adapter | Files | SQL table |
 | --- | --- | --- |
 | `amrfinder` | AMRFinderPlus TSV, run with `--name` | The columns listed below. `NA` is read as null |
-| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(allele)` for each of the scheme's loci | `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type`, then `locus_1` to `locus_<n>`, in mlst's order, where n is the most loci of any genome in the input: `locus_7` for a seven-locus scheme. All are text. `sequence_type` is `-` when none is assigned. A locus holds mlst's text as is: the locus name with the allele and mlst's flags, as in `arcC(3)`, `tpi(~4)`, `pta(4?)` and `gmk(-)`. A genome whose scheme has fewer loci, or with no scheme found, has null loci after its own |
+| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(call)` for each of the scheme's loci | One row per genome: `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type` (a number), and `calls`, a list with one `{locus, call}` per locus of the scheme, in mlst's order. `scheme` and `sequence_type` are null where mlst wrote `-`: no scheme found, no ST assigned. A call is text, as mlst wrote it with its flags: mlst's `tpi(~4)` is `{locus: tpi, call: ~4}`; other calls look like `3`, `4?`, `-` and `4,5`. A genome with no scheme found has no calls. See the SQL section to read `calls` |
 | `mash` | `mash dist` or `mash triangle -E` output, no header | `reference`, `query` (sample names: the directories and a `.fa`, `.fasta`, `.fna`, `.fas` or `.msh` extension, with or without `.gz`, are stripped), `distance`, `p_value`, `shared_hashes`, `sketch_hashes` |
 | `tsv`, `csv` | Any delimited file | `file` (the file's name), then the file's columns as named. Numbers are read as numbers |
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
@@ -149,7 +149,8 @@ Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
 - These are all the query keys. Any other key is an error, except a matrix's layout keys.
-- Filter values are compared as text: `sequence_type: 258` matches the text `258`.
+- Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
+  258, and `sample: 007` the text `007`, not `7`.
 - Joins, expressions, ranges and descending order need a `sql` block.
 - A block reading a `sql` block, with no `sort`, keeps the order of the statement's `order by`.
 
@@ -171,6 +172,25 @@ order by amr_hits desc, m.sample
 source: summary
 ```
 ````
+
+A list column, such as an `mlst` input's `calls`, is read with `unnest`, one row per element. Every call
+that is not a plain allele number:
+
+```sql
+select m.sample, c.locus, c.call
+from mlst m, unnest(m.calls) as u(c)
+where not regexp_full_match(c.call, '\d+')
+```
+
+A datatable shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
+datatable over an `mlst` input with no columns chosen shows `calls` that way. Select its fields, as above, or
+format it as text in SQL. Each genome's calls as one cell, `arcC:3, aroE:1, ...`:
+
+```sql
+select sample, scheme, sequence_type,
+       array_to_string(list_transform(calls, c -> c.locus || ':' || c.call), ', ') as calls
+from mlst
+```
 
 ## clusters
 
@@ -292,7 +312,7 @@ partial_below: 80                         # optional: ◆ marks coverage below t
 ## mlst_table
 
 mlst results as one datatable per scheme, captioned with the scheme. The scheme's locus names are the
-headers and the cells hold the alleles: the input's `arcC(3)` shows as `3` under `arcC`.
+headers and the cells hold the calls: the input's `{locus: arcC, call: 3}` shows as `3` under `arcC`.
 
 ```yaml
 source: mlst                  # an input loaded by the mlst adapter
@@ -301,14 +321,15 @@ sort: [sample]                # optional
 ```
 
 - It takes `source`, `filters` and `sort`. For other columns, write a `datatable`.
-- The columns are `Sample`, `ST`, then the scheme's loci. Each header keeps its column's name in its
-  `title`, such as `locus_1` for `arcC`.
+- The columns are `Sample`, `ST`, then the scheme's loci. `Sample` and `ST` keep their column's name in
+  their header's `title`.
 - Allele numbers compare only within a scheme, so each scheme gets its own table. Genomes with no scheme
   found get the last table, `No scheme found`, with no loci.
 - Without `sort`, the tables go by how many genomes they hold, most first, then by scheme, and the rows by
   sample. With `sort`, both follow the sorted result.
-- Filters and sort read the input's columns as they are: a locus is the text `tpi(~4)`, not `~4`.
-- Cells of one locus naming different loci within a scheme are an error.
+- Filters and sort read the input's columns: `sample`, `scheme` and `sequence_type`. To pick genomes by a
+  call, write a `sql` block over the input and read it with a `datatable`.
+- Genomes of one scheme calling different loci are an error.
 - A block that reads it gets its query's rows, as the input has them, not the split tables.
 
 ## tree
@@ -366,7 +387,7 @@ path: data/phylogeny/core.nwk
 
 ## Sequence types
 
-One row per genome, from mlst. `-` means no sequence type was assigned.
+One row per genome, from mlst. An empty ST means none was assigned.
 
 ```datatable st
 source: mlst
@@ -479,7 +500,7 @@ sort: [sample]
 The text result:
 
 ```
-blocks:1: input mlst: 12 rows; columns: sample, scheme, sequence_type, locus_1, locus_2, locus_3, locus_4, locus_5, locus_6, locus_7
+blocks:1: input mlst: 12 rows; columns: sample, scheme, sequence_type, calls
 blocks:6: datatable st258: 4 rows; columns: sample, sequence_type
 
 datatable st258:
