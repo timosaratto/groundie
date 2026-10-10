@@ -75,7 +75,7 @@ def test_build_cohort_example():
     assert "<p>From summary (ad hoc SQL):</p>\n<pre>select\n    m.sample," in out
     assert ('<tr><td>SAMD00654274</td><td class="num">8</td><td class="num">13</td><td class="num">19</td>'
             '<td class="num">2</td></tr>') in out  # 13 AMR, 19 virulence, 2 stress in its amrfinder file
-    assert '<tr><td>SAMD00654278</td><td class="num"></td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td>' in out
+    assert '<tr><td>SAMD00654278</td><td class="num null">–</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td>' in out
     assert "<th>arcC</th>" in out and "<th>yqiL</th>" in out
     assert "mlst_results/SAMD00654356.tsv" in out
     assert "<p>From mlst:</p>\n<pre>adapter: mlst\npath: ../data/mlst_results/SAMD*.tsv\n" in out
@@ -220,10 +220,10 @@ def test_mlst_table(tmp_path):
             '<th>aroE</th><th>glpF</th><th>gmk</th>') in out
     assert "<th>adk</th>" in out and "<th>recA</th>" in out
     assert '<tr><td>S1</td><td class="num">8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td><td>3</td></tr>' in out
-    assert '<tr><td>S2</td><td class="num"></td><td>3</td><td>3</td><td>1</td><td>-</td><td>4?</td><td>4,5</td><td>3</td></tr>' in out
+    assert '<tr><td>S2</td><td class="num null">–</td><td>3</td><td>3</td><td>1</td><td>-</td><td>4?</td><td>4,5</td><td>3</td></tr>' in out
     no_scheme = out.split("<caption>No scheme found</caption>")[1].split("</table>")[0]
     assert '<th title="sample">Sample</th><th title="sequence_type">ST</th></tr>' in no_scheme  # no loci, no ST
-    assert "<tr><td>unknown</td><td></td></tr>" in no_scheme
+    assert "<tr><td>unknown</td><td class=\"null\">–</td></tr>" in no_scheme
     assert out.count('<section class="block datatable">') == 1 and out.count("View query") == 1
     assert "Tables by how many genomes they hold" in out
     page, manifest, con = cli.build_report(path)

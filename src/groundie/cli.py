@@ -549,8 +549,11 @@ def is_num(value):
 
 
 def cell(value, tag="td", num=False):
-    text = "" if value is None else html.escape(str(value))
-    cls = ' class="num"' if num else ""
+    """A table cell. A null data cell shows a muted en dash."""
+    null = value is None and tag == "td"
+    text = "–" if null else "" if value is None else html.escape(str(value))
+    classes = " ".join(c for c, on in (("num", num), ("null", null)) if on)
+    cls = f' class="{classes}"' if classes else ""
     return f"<{tag}{cls}>{text}</{tag}>"
 
 
@@ -676,9 +679,9 @@ def render_matrix(query, grid, columns, rows):
                     style = f' style="{shade(min(1, max(0, (v - low) / (high - low))))}"'
             elif grid.value:
                 v = c[grid.value]
-                text = "" if v is None else html.escape(
+                text = "–" if v is None else html.escape(
                     f"{v:.{grid.digits}f}" if is_num(v) and grid.digits is not None else str(v))
-                cls = "cell num"
+                cls = "cell num null" if v is None else "cell num"
             if grid.mark and is_num(c[grid.mark["column"]]) and c[grid.mark["column"]] < grid.mark["below"]:
                 text += '<span class="mark">◆</span>'
             out.append(f'<td class="{cls}" title="{html.escape(title)}"{style}>{text}</td>')

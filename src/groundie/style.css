@@ -21,6 +21,7 @@ tbody tr:nth-child(even) { background: #fafafa; }
 tbody tr:hover { background: #f0f4ff; }
 td.empty { color: #888; font-style: italic; }
 td.num { text-align: right; white-space: nowrap; }
+td.null { color: #777; }
 th.num { text-align: right; }
 section.block { border: 1px solid #e3e3e3; border-radius: 8px; padding: 0.75rem 1rem; margin: 1.5rem 0 2rem; }
 section.block > table, section.block > svg.tree { margin-bottom: 0; }
