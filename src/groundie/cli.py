@@ -106,8 +106,7 @@ MLST_TABLE_KEYS = ("source", "filters", "sort")
 
 
 def mlst_table(name, block):
-    """An mlst_table block as its query: every column of the mlst input, whose loci are known only once it
-    is loaded. The tables are split at build."""
+    """An mlst_table block as its query: every column of the mlst input. The tables are split at build."""
     unknown = [k for k in block if k not in MLST_TABLE_KEYS]
     if unknown:
         raise SpecError(f"mlst_table {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
@@ -435,9 +434,7 @@ def load_input(con, block, base_dir):
             counts = insert_rows(con, block.name, adapter, [path for _, path in paths], block.options)
         else:
             literal = "[" + ", ".join(q.literal(path) for _, path in paths) + "]"
-            # an adapter with shape takes settings from the files themselves, such as mlst's number of loci
-            shape = adapter.shape(con, literal) if hasattr(adapter, "shape") else {}
-            sql = adapter.canonical_sql(block.options, **shape)
+            sql = adapter.canonical_sql(block.options)
             counts = [con.execute(f"select count(*) from ({sql.format(path=q.literal(path))})").fetchone()[0]
                       for _, path in paths]
             con.execute(f"create table {ident(block.name)} as {sql.format(path=literal)}")
