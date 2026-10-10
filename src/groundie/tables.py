@@ -2,10 +2,10 @@
 import re
 from dataclasses import dataclass
 
-from groundie.adapters.mlst import LOCI
 from groundie.query import SpecError
 
 LOCUS = re.compile(r"(.+)\((.*)\)")  # mlst's 'arcC(3)': the locus name, then the allele with its flags
+LOCUS_COLUMN = re.compile(r"locus_\d+")  # the mlst adapter's locus_1 to locus_<n>
 LABELS = {"sample": "Sample", "sequence_type": "ST"}
 NO_SCHEME = "-"  # mlst's scheme for a genome it could not type
 DEFAULT_ORDER = ("Tables by how many genomes they hold, most first, then by scheme; rows by sample. "
@@ -68,17 +68,18 @@ def mlst_tables(name, columns, rows, ordered):
     if NO_SCHEME in groups:
         groups[NO_SCHEME] = groups.pop(NO_SCHEME)
     fixed = ["sample", "sequence_type"]
-    at = [columns.index(c) for c in [*fixed, *LOCI]]
+    loci = [c for c in columns if LOCUS_COLUMN.fullmatch(c)]
+    at = [columns.index(c) for c in [*fixed, *loci]]
     tables = []
     for scheme, group in groups.items():
         group = [tuple(row[i] for i in at) for row in group]  # sample, sequence_type, then the loci
         if not ordered:
             group.sort(key=lambda row: by_name(row[0]))
         who = f"mlst_table {name!r}: scheme {scheme!r}"
-        loci, cells = names_from_cells(who, LOCI, [row[2:] for row in group], parse_locus, [row[0] for row in group])
+        named, cells = names_from_cells(who, loci, [row[2:] for row in group], parse_locus, [row[0] for row in group])
         tables.append(Table(
             "No scheme found" if scheme == NO_SCHEME else scheme,
-            [(c, LABELS[c]) for c in fixed] + loci,
+            [(c, LABELS[c]) for c in fixed] + named,
             [row[:2] + rest for row, rest in zip(group, cells)],
         ))
     return tables

@@ -20,7 +20,6 @@ from markdown_it import MarkdownIt
 from groundie.adapters import ADAPTERS
 from groundie import query as q
 from groundie import tables, tree
-from groundie.adapters import mlst
 from groundie.query import SpecError, ident
 
 BLOCK = re.compile(r"^```(\w+) (\w+)\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
@@ -107,14 +106,13 @@ MLST_TABLE_KEYS = ("source", "filters", "sort")
 
 
 def mlst_table(name, block):
-    """An mlst_table block as its query: every column of the mlst input. The tables are split at build."""
+    """An mlst_table block as its query: every column of the mlst input, whose loci are known only once it
+    is loaded. The tables are split at build."""
     unknown = [k for k in block if k not in MLST_TABLE_KEYS]
     if unknown:
         raise SpecError(f"mlst_table {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
                          f"{', '.join(MLST_TABLE_KEYS)}. For other columns, use a datatable")
-    query = q.normalize(name, block, "mlst_table")
-    query.columns = ["sample", "scheme", "sequence_type", *mlst.LOCI]
-    return query
+    return q.normalize(name, block, "mlst_table")
 
 
 @dataclass
@@ -436,10 +434,12 @@ def load_input(con, block, base_dir):
         if hasattr(adapter, "rows"):  # the adapter parses in Python; DuckDB only stores
             counts = insert_rows(con, block.name, adapter, [path for _, path in paths], block.options)
         else:
-            sql = adapter.canonical_sql(block.options)
+            literal = "[" + ", ".join(q.literal(path) for _, path in paths) + "]"
+            # an adapter with shape takes settings from the files themselves, such as mlst's number of loci
+            shape = adapter.shape(con, literal) if hasattr(adapter, "shape") else {}
+            sql = adapter.canonical_sql(block.options, **shape)
             counts = [con.execute(f"select count(*) from ({sql.format(path=q.literal(path))})").fetchone()[0]
                       for _, path in paths]
-            literal = "[" + ", ".join(q.literal(path) for _, path in paths) + "]"
             con.execute(f"create table {ident(block.name)} as {sql.format(path=literal)}")
     except duckdb.Error as e:
         raise SpecError(f"input {block.name!r}: {e}") from e

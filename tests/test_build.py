@@ -232,6 +232,15 @@ def test_mlst_table(tmp_path):
     assert cli.summary_line("spec.md", manifest["blocks"][1]).startswith("spec.md:5: mlst_table st: 6 rows in 3 tables; ")
 
 
+def test_mlst_table_loci_per_scheme(tmp_path):
+    lines = [*MLST_ROWS, "B1.fa\tborrelia\t1\t" + "\t".join(f"g{i}(1)" for i in range(1, 9))]  # eight loci
+    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\n"), lines))
+    borrelia = out.split("<caption>borrelia</caption>")[1].split("</table>")[0]
+    assert borrelia.count("</th>") == 10 and '<th title="locus_8">g8</th>' in borrelia
+    saureus = out.split("<caption>saureus</caption>")[1].split("</table>")[0]
+    assert saureus.count("</th>") == 9 and "locus_8" not in saureus  # its own seven loci only
+
+
 def test_mlst_table_sort_and_filters(tmp_path):
     out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nsort: [sequence_type]\n")))
     assert captions(out) == ["saureus", "ecoli_achtman_4", "No scheme found"]  # first seen, no scheme still last
@@ -935,11 +944,18 @@ def test_mlst_adapter(tmp_path):
     assert got[0] == got[10] == ("SAMD00654274", "saureus", "8", *loci, "tpi(4)", "yqiL(3)")
     assert got[11] == ("SAMD00654274", "saureus", "-", *loci, "tpi(~4)", "yqiL(3)")  # same name, its own call
     assert got[12] == ("unknown", "-", "-", None, None, None, None, None, None, None)  # no scheme found: kept
-    # a scheme of more than seven loci is an error, not a silent truncation
-    (tmp_path / "a.tsv").write_text("x.fa\tbig\t1" + "\tl(1)" * 8 + "\n")
-    text = block("input m", "adapter: mlst\npath: a.tsv\n") + block("datatable t", "source: m\n")
-    with pytest.raises(cli.SpecError, match="Expected Number of Columns: 10 Found: 11"):
-        cli.build_report(write(tmp_path, text))
+
+    def load(lines):
+        (tmp_path / "a.tsv").write_text(lines)
+        page, manifest, con = cli.build_report(write(tmp_path, block("input m", "adapter: mlst\npath: a.tsv\n")))
+        return manifest["blocks"][0]["output_columns"], con.execute("select * from m").fetchall()
+
+    # as many locus columns as the input's largest scheme has loci: none are cut off; Windows line ends too
+    columns, got = load("x.fa\tbig\t1" + "\tl(1)" * 8 + "\r\ny.fa\tsmall\t2" + "\tm(2)" * 6 + "\r\n")
+    assert columns == ["sample", "scheme", "sequence_type", *[f"locus_{i}" for i in range(1, 9)]]
+    assert got == [("x", "big", "1", *["l(1)"] * 8), ("y", "small", "2", *["m(2)"] * 6, None, None)]
+    columns, got = load("unknown.fa\t-\t-\n")  # nothing typed: no loci
+    assert columns == ["sample", "scheme", "sequence_type"] and got == [("unknown", "-", "-")]
 
 
 def test_clusters(tmp_path):
