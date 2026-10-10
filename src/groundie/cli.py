@@ -854,7 +854,7 @@ def main():
     b.add_argument("file", type=Path)
     b.add_argument("-o", "--out", type=Path, required=True)
     b.add_argument("--manifest", type=Path, help="also write the build's manifest, as JSON, to this path")
-    d = sub.add_parser("dev", help="serve a file of blocks as the MCP view shows it, reloading on changes")
+    d = sub.add_parser("dev", help="serve the report of a file of blocks, reloading on changes")
     d.add_argument("file", type=Path)
     d.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
