@@ -387,7 +387,7 @@ path: data/phylogeny/core.nwk
 
 ## Sequence types
 
-One row per genome, from mlst. An empty ST means none was assigned.
+One row per genome, from mlst. A – in the ST column means none was assigned.
 
 ```datatable st
 source: mlst
