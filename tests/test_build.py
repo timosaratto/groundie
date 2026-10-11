@@ -220,7 +220,7 @@ def test_mlst_table(tmp_path):
             '<th>aroE</th><th>glpF</th><th>gmk</th>') in out
     assert "<th>adk</th>" in out and "<th>recA</th>" in out
     assert '<tr><td>S1</td><td class="num">8</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>~4</td><td>3</td></tr>' in out
-    assert '<tr><td>S2</td><td class="num null">–</td><td>3</td><td>3</td><td>1</td><td>-</td><td>4?</td><td>4,5</td><td>3</td></tr>' in out
+    assert '<tr><td>S2</td><td class="num null">–</td><td>3</td><td>3</td><td>1</td><td class="null">–</td><td>4?</td><td>4,5</td><td>3</td></tr>' in out
     no_scheme = out.split("<caption>No scheme found</caption>")[1].split("</table>")[0]
     assert '<th title="sample">Sample</th><th title="sequence_type">ST</th></tr>' in no_scheme  # no loci, no ST
     assert "<tr><td>unknown</td><td class=\"null\">–</td></tr>" in no_scheme
@@ -952,7 +952,7 @@ def test_mlst_adapter(tmp_path):
 
 def test_mlst_rows_match_schema():
     from jsonschema import Draft202012Validator
-    adapter = mlst.ADAPTER
+    adapter = mlst.Mlst
     Draft202012Validator.check_schema(adapter.SCHEMA)
     names = [n for n, _ in adapter.COLUMNS]
     rows = adapter.rows(MLST, {}) + adapter.rows(FIXTURES / "mlst_edge.tsv", {})
@@ -965,16 +965,18 @@ def test_mlst_rows(tmp_path):
     # any number of loci, mlst's flags kept in the call, Windows line ends, blank lines skipped
     path.write_text("x/y.fasta.gz\tbig\t1" + "".join(f"\tl{i}({i})" for i in range(1, 9))
                     + "\r\n\r\nz.fna\tsaureus\t-\tarcC(-)\taroE(~4)\tglpF(4?)\tgmk(4,5)\r\n")
-    assert mlst.ADAPTER.rows(path, {}) == [
+    assert mlst.Mlst.rows(path, {}) == [
         ("y", "big", 1, [{"locus": f"l{i}", "call": str(i)} for i in range(1, 9)]),
-        ("z", "saureus", None, [{"locus": "arcC", "call": "-"}, {"locus": "aroE", "call": "~4"},
+        ("z", "saureus", None, [{"locus": "arcC", "call": None}, {"locus": "aroE", "call": "~4"},
                                 {"locus": "glpF", "call": "4?"}, {"locus": "gmk", "call": "4,5"}])]
 
 
 @pytest.mark.parametrize("line, error", [
-    ("x.fa\tsaureus", "a.tsv, line 2: not enough values to unpack (expected at least 3, got 2)"),
+    ("x.fa\tsaureus", "a.tsv, line 2: has 2 columns; needs at least 3"),
+    ("-\tsaureus\t8", "a.tsv, line 2: sample: '-' is null, which this column can't be"),
     ("x.fa\tsaureus\tST8\tarcC(3)", "a.tsv, line 2: sequence_type: 'ST8' is not an integer"),
     ("x.fa\tsaureus\t8\tarcC3", "a.tsv, line 2: calls: 'arcC3' is not 'locus(call)'"),
+    ("x.fa\tsaureus\t8\t-(3)", "a.tsv, line 2: calls: locus: '-' is null, which this column can't be"),
 ])
 def test_mlst_bad_line(tmp_path, line, error):
     (tmp_path / "a.tsv").write_text(f"y.fa\t-\t-\n{line}\n")
@@ -982,28 +984,69 @@ def test_mlst_bad_line(tmp_path, line, error):
         build(write(tmp_path, block("input m", "adapter: mlst\npath: a.tsv\n")))
 
 
-def test_record_checks():
-    with pytest.raises(TypeError, match=r"^Bad.n: a <class 'int'> field needs a reader; only text is kept as is$"):
-        class Bad(utils.Record):
+class Part(utils.Struct):
+    PATTERN = "{name}:{n}"
+
+    name: str
+    n: int
+
+
+@pytest.mark.parametrize("hint, source, problem", [
+    (int, None, "needs a source: column(...) or columns(...)"),
+    (str, utils.column("Name"), "names column 'Name', but the format has no header"),
+    (str, utils.column(0), "columns are counted from 1, first to last"),
+    (list[str], utils.columns(2, 0), "columns are counted from 1, first to last"),
+    (list[str], utils.columns(3, 2), "columns are counted from 1, first to last"),
+    (list[str], utils.columns(2, ...), "columns(...) ends at a position: -1 for each line's last"),
+    (str, utils.columns(2, -1), "columns(...) reads a list: its type is list[...]"),
+    (list[str], utils.column(2), "a list is read from columns(...)"),
+    (bool, utils.column(2), "no reader for <class 'bool'>"),
+])
+def test_adapter_checks(hint, source, problem):
+    assert utils.source_problem(utils.Tsv(header=False), utils.Field(hint, source, None)) == problem
+    with pytest.raises(TypeError, match=r"^Bad.n: needs a source: column\(\.\.\.\) or columns\(\.\.\.\)$"):
+        class Bad(utils.Adapter):
+            FORMAT = utils.Tsv(header=False)
             n: int
 
-    class Wrong(utils.Record):
-        n: int | None = utils.none_if("-")  # forgets the integer
 
-    with pytest.raises(TypeError, match=r"^Wrong.n: '3' is not int \| None$"):
-        Wrong.read(n="3")
-    with pytest.raises(TypeError, match=r"^Wrong.read: needs n; got m$"):
-        Wrong.read(m="3")
+def test_struct_checks():
+    with pytest.raises(TypeError, match=r"^NoPattern: needs a PATTERN naming its parts, such as '\{a\}:\{b\}'$"):
+        class NoPattern(utils.Struct):
+            a: str
+    with pytest.raises(TypeError, match=r"^Mismatch: its PATTERN has parts name, count; its fields are name, n$"):
+        class Mismatch(utils.Struct):
+            PATTERN = "{name}:{count}"
+            name: str
+            n: int
+    with pytest.raises(TypeError, match=r"^Nested.p: a part is str, int or float, not .*Part"):
+        class Nested(utils.Struct):
+            PATTERN = "{p}"
+            p: Part
+
+
+class Hits(utils.Adapter):
+    FORMAT = utils.Tsv(header=True, null="NA")
+
+    sample: str = utils.column("Name")
+    identity: float | None = utils.column("% Identity")
+    span: Part = utils.column("Span")
+
+
+def test_adapter_with_header(tmp_path):
+    (tmp_path / "h.tsv").write_text("Span\tName\t% Identity\nc1:7\tS1\t99.5\nc2:-3\tS2\tNA\n")
+    assert Hits.rows(tmp_path / "h.tsv", {}) == [
+        ("S1", 99.5, {"name": "c1", "n": 7}), ("S2", None, {"name": "c2", "n": -3})]
+    (tmp_path / "h.tsv").write_text("Span\tName\nc1:7\tS1\n")
+    with pytest.raises(ValueError, match=r"^h\.tsv: no column '% Identity'; the header has 'Span', 'Name'$"):
+        Hits.rows(tmp_path / "h.tsv", {})
 
 
 def test_readers():
-    assert utils.none_if("NA", utils.number)("NA") is None
-    assert utils.none_if("NA", utils.number)("0.5") == 0.5
-    assert utils.none_if("-")("x") == "x"
-    assert utils.each(utils.integer)(["1", "-2"]) == [1, -2]
-    assert utils.fullmatch(r"(.+)\((.*)\)", "tpi(~4)") == ("tpi", "~4")
+    assert utils.Pattern("{locus}({call})").split("tpi(~4)") == {"locus": "tpi", "call": "~4"}
+    assert utils.Pattern("{locus}({call})").split("gmk()") == {"locus": "gmk", "call": ""}
     with pytest.raises(ValueError, match=r"^'tpi' is not 'locus\(call\)'$"):
-        utils.fullmatch(r"(.+)\((.*)\)", "tpi", shown="locus(call)")
+        utils.Pattern("{locus}({call})").split("tpi")
     with pytest.raises(ValueError, match=r"^'8\.0' is not an integer$"):
         utils.integer("8.0")
 
@@ -1011,7 +1054,7 @@ def test_readers():
 @pytest.mark.parametrize("file", ["genomes/A.fa.gz", "A.fasta", "a/b/A.fna", "A.fas.gz", "A", "A.fa.bak"])
 def test_mlst_sample_names_match_mash(file):
     sql = mash.SAMPLE.format(col="?")
-    assert utils.sample_name(file) == duckdb.execute(f"select {sql}", [file]).fetchone()[0]
+    assert utils.extract_sample_name(file) == duckdb.execute(f"select {sql}", [file]).fetchone()[0]
 
 
 def test_clusters(tmp_path):

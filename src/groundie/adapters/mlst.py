@@ -1,38 +1,29 @@
-"""mlst's default output: tab-separated, no header, '-' for nothing."""
+"""mlst's default output: the file, the scheme, the ST, then 'locus(call)' for each of the scheme's loci."""
 
-from groundie.adapters.utils import Lines, Record, each, fullmatch, integer, none_if, sample_name
+from groundie.adapters.utils import Adapter, Struct, Tsv, column, columns, extract_sample_name
 
 
-class MlstCall(Record):
+class MlstCall(Struct):
+    PATTERN = "{locus}({call})"
+
     locus: str
-    call: str
-    "As mlst wrote it, flags included: '3', '~4', '4?', '-'."
+    call: str | None
+    "As mlst wrote it, flags included: '3', '~4', '4?'; null where mlst wrote '-', no allele found."
 
 
-def parse_call(text):
-    locus, call = fullmatch(r"(.+)\((.*)\)", text, shown="locus(call)")
-    return MlstCall.read(locus=locus, call=call)
-
-
-class Mlst(Record):
+class Mlst(Adapter):
     """One genome's mlst result."""
 
-    sample: str = sample_name
+    FORMAT = Tsv(header=False, null="-")
+
+    sample: str = column(1, transform=extract_sample_name)
     "The genome's file, without directories or FASTA extension."
 
-    scheme: str | None = none_if("-")
+    scheme: str | None = column(2)
     "The MLST scheme; null when none was found."
 
-    sequence_type: int | None = none_if("-", integer)
+    sequence_type: int | None = column(3)
     "The ST; null when none was assigned."
 
-    calls: list[MlstCall] = each(parse_call)
+    calls: list[MlstCall] = columns(4, -1)
     "One call per locus, in mlst's order; empty when no scheme was found."
-
-
-def parse(line):
-    file, scheme, st, *loci = line.split("\t")
-    return Mlst.read(sample=file, scheme=scheme, sequence_type=st, calls=loci)
-
-
-ADAPTER = Lines(Mlst, parse)
