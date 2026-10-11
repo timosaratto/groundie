@@ -97,7 +97,7 @@ options: {null: NA}     # optional; only tsv and csv take options
 | Adapter | Files | SQL table |
 | --- | --- | --- |
 | `amrfinder` | AMRFinderPlus TSV, run with `--name` | The columns listed below. `NA` is read as null |
-| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(call)` for each of the scheme's loci | One row per genome: `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type` (a number), and `calls`, a list with one `{locus, call}` per locus of the scheme, in mlst's order. `scheme` and `sequence_type` are null where mlst wrote `-`: no scheme found, no ST assigned. A call is text, as mlst wrote it with its flags: mlst's `tpi(~4)` is `{locus: tpi, call: ~4}`; other calls look like `3`, `4?`, `-` and `4,5`. A genome with no scheme found has no calls. See the SQL section to read `calls` |
+| `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(call)` for each of the scheme's loci | One row per genome: `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type` (a number), and `calls`, a list with one `{locus, call}` per locus of the scheme, in mlst's order. `scheme` and `sequence_type` are null where mlst wrote `-`: no scheme found, no ST assigned. A call is text, as mlst wrote it with its flags: mlst's `tpi(~4)` is `{locus: tpi, call: ~4}`; other calls look like `3`, `4?` and `4,5`. A call is null where mlst wrote `-`, no allele found: `gmk(-)` is `{locus: gmk, call: null}`. A genome with no scheme found has no calls. See the SQL section to read `calls` |
 | `mash` | `mash dist` or `mash triangle -E` output, no header | `reference`, `query` (sample names: the directories and a `.fa`, `.fasta`, `.fna`, `.fas` or `.msh` extension, with or without `.gz`, are stripped), `distance`, `p_value`, `shared_hashes`, `sketch_hashes` |
 | `tsv`, `csv` | Any delimited file | `file` (the file's name), then the file's columns as named. Numbers are read as numbers |
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
@@ -179,7 +179,7 @@ that is not a plain allele number:
 ```sql
 select m.sample, c.locus, c.call
 from mlst m, unnest(m.calls) as u(c)
-where not regexp_full_match(c.call, '\d+')
+where c.call is null or not regexp_full_match(c.call, '\d+')
 ```
 
 A datatable shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
@@ -188,7 +188,7 @@ format it as text in SQL. Each genome's calls as one cell, `arcC:3, aroE:1, ...`
 
 ```sql
 select sample, scheme, sequence_type,
-       array_to_string(list_transform(calls, c -> c.locus || ':' || c.call), ', ') as calls
+       array_to_string(list_transform(calls, c -> c.locus || ':' || coalesce(c.call, '-')), ', ') as calls
 from mlst
 ```
 
