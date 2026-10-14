@@ -489,11 +489,16 @@ def insert_rows(con, label, adapter, paths, options):
     """Create the input's SQL table from the adapter's COLUMNS and insert each file's rows. Returns rows per file."""
     con.execute(f"create table {ident(label)} ({', '.join(f'{ident(n)} {t}' for n, t in adapter.COLUMNS)})")
     counts = []
+    named = {}  # (field, value) a file's path gave: that file
     for path in paths:
         try:
             rows = adapter.rows(path, options)
         except (OSError, ValueError) as e:
             raise SpecError(f"input {label!r}: {e}") from e
+        for field, value in (adapter.path_values(path) if hasattr(adapter, "path_values") else {}).items():
+            if (other := named.setdefault((field, value), path)) != path:
+                raise SpecError(f"input {label!r}: {other} and {path} both lack column "
+                                f"{adapter.FIELDS[field].source.first!r}, and their names both give {field} {value!r}")
         # The rows go in as one JSON string: executemany, or a list parameter per column, takes seconds
         # for a tree of ten thousand tips; this takes a tenth of one.
         names = [n for n, _ in adapter.COLUMNS]

@@ -43,6 +43,12 @@ order by m.sample
 
 ```DataTable summary_table
 source: summary
+display:
+  sample: Sample
+  sequence_type: ST
+  amr_hits: AMR hits
+  virulence_hits: Virulence hits
+  stress_hits: Stress hits
 ```
 
 ## Phylogeny

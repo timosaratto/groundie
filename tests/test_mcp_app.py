@@ -31,7 +31,7 @@ def test_render_blocks_for_apps_host():
     assert not result.is_error
     text = result.content[0].text
     assert text.startswith("cohort.md:3: input mlst: 10 rows; columns: sample, scheme")
-    assert "\ncohort.md:52: Tree phylogeny: 10 tips, 10 matched\n" in text
+    assert "\ncohort.md:58: Tree phylogeny: 10 tips, 10 matched\n" in text
     for shown in ("MlstTable st", "DataTable summary_table", "Matrix resistome"):
         assert f"\n\n{shown}:\n" in text
     assert "\nsql summary:\n" not in text and "\ninput mlst:\n" not in text  # neither shown nor last
@@ -54,7 +54,7 @@ def test_render_blocks_inline():
     _, _, result = call({"blocks": blocks, "base_dir": str(DATA)}, APPS_HOST)
     assert not result.is_error
     text = result.content[0].text
-    assert text.startswith("blocks:1: input amrfinder: 334 rows; columns: sample, contig_id")
+    assert text.startswith("blocks:1: input amrfinder: 334 rows; columns: sample, protein_id, contig_id")
     assert "\n\nDataTable classes:\nelement_class\n" in text
     assert '<section class="block datatable">' in result.structured_content["html"]
 
@@ -80,7 +80,7 @@ def test_render_blocks_inline_paths():
 def test_render_blocks_ending_in_an_input():
     _, _, result = call({"blocks": AMRFINDER, "base_dir": str(DATA)}, APPS_HOST)
     text = result.content[0].text
-    assert "\n\ninput amrfinder:\nsample\tcontig_id\t" in text
+    assert "\n\ninput amrfinder:\nsample\tprotein_id\tcontig_id\t" in text
     assert text.endswith(f"\n... {334 - MAX_ROWS} more rows")
     assert text.count("\n") == 1 + 2 + 1 + MAX_ROWS  # summary line, label, header, rows, the rest counted
     assert result.structured_content["html"].startswith('<details class="provenance">')  # nothing to show
