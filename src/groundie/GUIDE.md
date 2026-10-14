@@ -103,7 +103,12 @@ options: {null: NA}     # optional; only tsv and csv take options
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
 | `newick` | Newick trees | One row per node: `file`, `tree`, `node`, `parent`, `label`, `branch_length`, `support`, `is_tip`, `comment`. Drawn by a `tree` block |
 
-The column names come from the adapter, not from the file. The `amrfinder` columns:
+The column names come from the adapter, not from the file.
+
+Titles, which a datatable shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
+and `sequence_type` ST. No other adapter declares titles yet.
+
+The `amrfinder` columns:
 
 ```
 text:    sample, contig_id, strand, element_symbol, element_name, scope, element_type, element_subtype,
@@ -168,6 +173,10 @@ display:
 ```
 
 - Each key is one of the block's output columns; each title is text.
+- `display` may instead name an input, whose adapter's titles it shows: `display: mlst` titles `sample`,
+  `scheme` and `sequence_type` as `Sample`, `Scheme` and `ST`. It matches by column name, so it works through
+  a `query` or `sql` block too, as long as the name is unchanged; a column the adapter has no title for keeps
+  its name. Only adapters that declare titles can be named: see [Adapters](#adapters).
 - Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
   `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 
@@ -410,7 +419,7 @@ One row per genome, from mlst. A – in the ST column means none was assigned.
 source: mlst
 columns: [sample, sequence_type]
 sort: [sample]
-display: {sample: Sample, sequence_type: ST}
+display: mlst
 ```
 
 ```tree phylogeny

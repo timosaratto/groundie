@@ -302,11 +302,39 @@ def test_datatable_display_every_column(tmp_path):
     ("display: {sequence_type: 7}\n", "datatable 'st': display 'sequence_type' must be text, the column's title"),
     ("display: {sequence_type: {title: ST}}\n", "display 'sequence_type' must be text, the column's title"),
     ("display: {sequence_type: ''}\n", "display 'sequence_type' must be text, the column's title"),
-    ("display: [sequence_type]\n", "datatable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}"),
+    ("display: [sequence_type]\n", "datatable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
+                                   "or names an input whose adapter's titles it shows"),
 ])
 def test_datatable_display_shape(tmp_path, body, error):
     with pytest.raises(cli.SpecError, match=re.escape(error)):
         build(mlst_spec(tmp_path, block("datatable st", "source: mlst\n" + body)))
+
+
+def test_datatable_display_from_input(tmp_path):
+    # the adapter's titles, by column name, through a sql block; a column it has no title for keeps its name
+    body = (block("sql n", "select sample, sequence_type, 1 as one from mlst order by sample\n")
+            + block("datatable st", "source: n\ndisplay: mlst\n"))
+    path = mlst_spec(tmp_path, body)
+    out = build(path)
+    assert ('<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th>'
+            '<th class="num">one</th></tr>') in out
+    assert details(out, "datatable").startswith("\n<pre>source: n\ndisplay: mlst\n</pre>")  # as written
+    page, manifest, con = cli.build_report(path)
+    assert manifest["queries"][0]["display"] == {"sample": "Sample", "sequence_type": "ST"}  # as resolved
+    assert [c[0] for c in con.execute("describe st").fetchall()] == ["sample", "sequence_type", "one"]
+
+
+@pytest.mark.parametrize("display, error", [
+    ("nope", "spec.md:12: datatable 'st': display 'nope' names no block; inputs: mlst, t"),
+    ("q", "datatable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
+    ("t", "datatable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
+          "adapters with titles: mlst"),
+])
+def test_datatable_display_from_input_shape(tmp_path, display, error):
+    (tmp_path / "t.tsv").write_text("n\n1\n")
+    head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
+    with pytest.raises(cli.SpecError, match=re.escape(error)):
+        build(mlst_spec(tmp_path, head + block("datatable st", f"source: mlst\ndisplay: {display}\n")))
 
 
 @pytest.mark.parametrize("fence, body", [
@@ -1004,6 +1032,14 @@ def test_mlst_rows_match_schema():
         Draft202012Validator(adapter.SCHEMA).validate(dict(zip(names, row)))
 
 
+def test_adapter_titles():
+    assert mlst.Mlst.TITLES == {"sample": "Sample", "scheme": "Scheme", "sequence_type": "ST"}
+    properties = mlst.Mlst.SCHEMA["properties"]
+    assert properties["sequence_type"]["title"] == "ST"
+    assert properties["sequence_type"]["description"] == "The ST; null when none was assigned."
+    assert "title" not in properties["calls"]
+
+
 def test_mlst_rows(tmp_path):
     path = tmp_path / "a.tsv"
     # any number of loci, mlst's flags kept in the call, Windows line ends, blank lines skipped
@@ -1045,6 +1081,8 @@ class Part(utils.Struct):
     (str, utils.columns(2, -1), "columns(...) reads a list: its type is list[...]"),
     (list[str], utils.column(2), "a list is read from columns(...)"),
     (bool, utils.column(2), "no reader for <class 'bool'>"),
+    (str, utils.column(2, title=""), "a title is text, the header a datatable shows"),
+    (str, utils.column(2, title=7), "a title is text, the header a datatable shows"),
 ])
 def test_adapter_checks(hint, source, problem):
     assert utils.source_problem(utils.Tsv(header=False), utils.Field(hint, source, None)) == problem

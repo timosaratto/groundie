@@ -82,10 +82,14 @@ def layout(name, block):
 
 def display(name, block):
     """Take a datatable's display key out of the block (the rest is the query): each column's title, by
-    column. Whether it names output columns is checked at build, when they are known."""
+    column, or the name of an input whose adapter's titles it shows. Whether the titles name output columns,
+    and the input is one, are checked later, when they are known."""
     value = block.pop("display", None) or {}
+    if isinstance(value, str):
+        return value
     if not isinstance(value, dict):
-        raise SpecError(f"datatable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}")
+        raise SpecError(f"datatable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}, "
+                        "or names an input whose adapter's titles it shows")
     for column, title in value.items():
         if not isinstance(title, str) or not title.strip():
             raise SpecError(f"datatable {name!r}: display {str(column)!r} must be text, the column's title")
@@ -323,6 +327,8 @@ def check_reads(name, segments):
                 if blocks[target]["type"] != "input" and target not in above:
                     raise SpecError(f"{who}: {key} {target!r} is not above this block; "
                                      "a block reads inputs and the blocks above it")
+            if isinstance(seg.get("display"), str):
+                check_display(who, seg["display"], blocks)
             if seg["type"] == "tree":
                 source = blocks[block.source]
                 if source["type"] != "input" or source["block"].adapter != "newick":
@@ -339,6 +345,21 @@ def check_reads(name, segments):
                                      f"input loaded by the {adapter} adapter; narrow it with filters")
         if seg["type"] != "tree":
             above.add(block.name)
+
+
+def check_display(who, target, blocks):
+    """A datatable's 'display: <name>' names an input loaded by an adapter that declares titles."""
+    titled = ", ".join(a for a, adapter in ADAPTERS.items() if getattr(adapter, "TITLES", None))
+    if target not in blocks:
+        inputs = [n for n, s in blocks.items() if s["type"] == "input"]
+        raise SpecError(f"{who}: display {target!r} names no block; inputs: {', '.join(inputs) or 'none'}")
+    if blocks[target]["type"] != "input":
+        raise SpecError(f"{who}: display {target!r} is a {blocks[target]['type']} block; display names an "
+                         "input, whose adapter's titles it shows")
+    adapter = blocks[target]["block"].adapter
+    if not getattr(ADAPTERS[adapter], "TITLES", None):
+        raise SpecError(f"{who}: display {target!r} is loaded by adapter {adapter!r}, which declares no titles; "
+                         f"adapters with titles: {titled}")
 
 
 def yaml_line(e, first):
@@ -849,15 +870,20 @@ def build_block(con, blocks, manifest, parts, seg):
     if seg["type"] != "query":
         data = con.execute(f"select * from {ident(block.name)}").fetchall()
     if seg["type"] == "datatable":
-        titles = seg["display"]
-        outside = [c for c in titles if c not in columns]
-        if outside:
-            raise SpecError(f"{who}: display names {', '.join(map(repr, outside))}, not an output column; "
-                            f"output columns: {', '.join(columns)}")
+        written = seg["display"]
+        if isinstance(written, str):  # an input: its adapter's titles, for the columns that have one
+            declared = ADAPTERS[blocks[written].adapter].TITLES
+            titles = {c: declared[c] for c in columns if c in declared}
+        else:
+            titles = written
+            outside = [c for c in titles if c not in columns]
+            if outside:
+                raise SpecError(f"{who}: display names {', '.join(map(repr, outside))}, not an output column; "
+                                f"output columns: {', '.join(columns)}")
         if titles:
             entry["display"] = titles
         parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data),
-                            q.to_yaml(block) + (q.dump({"display": titles}) if titles else ""),
+                            q.to_yaml(block) + (q.dump({"display": written}) if written else ""),
                             q.lineage(blocks, block.source)))
     if seg["type"] == "mlst_table":
         split = tables.mlst_tables(block.name, columns, data, bool(block.sort))

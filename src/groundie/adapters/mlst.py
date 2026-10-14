@@ -16,13 +16,13 @@ class Mlst(Adapter):
 
     FORMAT = Tsv(header=False, null="-")
 
-    sample: str = column(1, transform=extract_sample_name)
+    sample: str = column(1, transform=extract_sample_name, title="Sample")
     "The genome's file, without directories or FASTA extension."
 
-    scheme: str | None = column(2)
+    scheme: str | None = column(2, title="Scheme")
     "The MLST scheme; null when none was found."
 
-    sequence_type: int | None = column(3)
+    sequence_type: int | None = column(3, title="ST")
     "The ST; null when none was assigned."
 
     calls: list[MlstCall] = columns(4, -1)

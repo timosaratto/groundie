@@ -23,7 +23,10 @@ three steps:
 3. The field's type reads the text: str as is, int and float strictly, and a Struct by its PATTERN, such as
    '{locus}({call})', which splits the text into the Struct's fields, each read as a cell is, from step 1.
 
-The class gives the SQL COLUMNS, the JSON SCHEMA and the rows that cli.load_input expects."""
+A field may also have a title, column(3, title="ST"): the header a datatable shows for it when its display
+names the input, 'display: mlst'.
+
+The class gives the SQL COLUMNS, the JSON SCHEMA, the TITLES and the rows that cli.load_input expects."""
 
 import ast
 import inspect
@@ -92,31 +95,37 @@ class Pattern:
 
 @dataclass(frozen=True)
 class Source:
-    """Where a field's text comes from, and how it is read before its type reads it."""
+    """Where a field's text comes from, and how it is read before its type reads it; and its title, the
+    header a datatable with 'display: <input>' shows for the field."""
     first: int | str  # a position, counted from 1, or a name in the header
     last: int | None  # None: the one cell at first; a position, negative from the line's end: a list of cells
     transform: object
+    title: str | None = None
 
     @property
     def many(self):
         return self.last is not None
 
 
-def column(at, transform=None):
+def column(at, transform=None, title=None):
     """One cell: the column at a position, counted from 1, or of a name in the header."""
-    return Source(at, None, transform)
+    return Source(at, None, transform, title)
 
 
-def columns(first, last, transform=None):
+def columns(first, last, transform=None, title=None):
     """A list of cells: the columns from position first through last, both counted from 1, as in DuckDB's
     list_slice. A negative last counts from each line's end: -1 is its last cell, -2 the one before."""
-    return Source(first, last, transform)
+    return Source(first, last, transform, title)
 
 
 class Field(NamedTuple):
     hint: object
     source: Source | None
     doc: str | None
+
+    @property
+    def title(self):
+        return self.source.title if isinstance(self.source, Source) else None
 
 
 class Struct:
@@ -160,6 +169,7 @@ class Adapter:
             if problem := source_problem(cls.FORMAT, f):
                 raise TypeError(f"{cls.__name__}.{name}: {problem}")
         cls.COLUMNS = tuple((name, sql_type(f.hint)) for name, f in cls.FIELDS.items())
+        cls.TITLES = {name: f.title for name, f in cls.FIELDS.items() if f.title}
         cls.SCHEMA = {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": f"{cls.NAME} result",
                       **object_type(cls)}
 
@@ -236,6 +246,8 @@ def source_problem(format, f):
     if not isinstance(s, Source):
         return "needs a source: column(...) or columns(...)"
     t, nullable = optional(f.hint)
+    if s.title is not None and not (isinstance(s.title, str) and s.title.strip()):
+        return "a title is text, the header a datatable shows"
     if isinstance(s.first, str) and not format.header:
         return f"names column {s.first!r}, but the format has no header"
     if s.many and not isinstance(s.last, int):
@@ -283,7 +295,7 @@ def sql_type(hint):
     raise TypeError(f"no SQL type for {t}")
 
 
-def json_type(hint, doc=None):
+def json_type(hint, doc=None, title=None):
     t, nullable = optional(hint)
     if t in SCALARS:
         out = {"type": SCALARS[t][0]}
@@ -295,14 +307,14 @@ def json_type(hint, doc=None):
         raise TypeError(f"no JSON type for {t}")
     if nullable:
         out["type"] = [out["type"], "null"]
-    return out | ({"description": doc} if doc else {})
+    return out | ({"title": title} if title else {}) | ({"description": doc} if doc else {})
 
 
 def object_type(cls):
     """A Struct or an Adapter's row as a JSON object."""
     return {"type": "object",
             **({"description": inspect.cleandoc(cls.__doc__)} if cls.__doc__ else {}),
-            "properties": {name: json_type(f.hint, f.doc) for name, f in cls.FIELDS.items()},
+            "properties": {name: json_type(f.hint, f.doc, f.title) for name, f in cls.FIELDS.items()},
             "required": list(cls.FIELDS), "additionalProperties": False}
 
 
