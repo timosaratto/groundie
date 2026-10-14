@@ -157,6 +157,8 @@ group, sorted and joined with `, `, and `distinct(column)`, the same with each v
   `display`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
+- `null` (or `~`) matches a missing value: `sequence_type: null` keeps the genomes with no ST, and
+  `sequence_type: [8, null]` those with ST 8 or none. `None` is the text `None`.
 - Joins, expressions, ranges and descending order need a `sql` block.
 - A block reading a `sql` block, with no `sort`, keeps the order of the statement's `order by`.
 

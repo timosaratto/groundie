@@ -6,6 +6,7 @@ import duckdb
 import pytest
 
 from groundie import cli
+from groundie import query as q
 from groundie.adapters import mash, mlst, utils
 from groundie.cli import build
 
@@ -48,13 +49,14 @@ def spec(tmp_path, body):
 
 def test_build_amr_example():
     out = build(SPEC)
-    assert out.count("<tr>") == 47  # 1 + 13 + 5 + 21 datatable rows + 4 header rows + provenance header + 2 inputs
+    assert out.count("<tr>") == 49  # 1 + 1 + 13 + 5 + 21 datatable rows + 5 header rows + provenance header + 2 inputs
     assert "<title>SAMD00654274</title>" in out
     assert out.count("<h1>") == 1 and "<h1>AMR hits for SAMD00654274</h1>" in out  # the author's, from prose
     assert "<h2>Provenance</h2>" in out
     assert "<h2>AMR hits</h2>" in out
     assert "amrfinder preliminary" in out
-    assert rows(SPEC) == {"st": 1, "amr": 13, "classes": 5, "virulence": 21}
+    assert rows(SPEC) == {"st": 1, "st_2": 1, "amr": 13, "classes": 5, "virulence": 21}
+    assert '<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th></tr>' in out  # display: mlst
     assert '<tr><th title="element_class">Class</th><th class="num" title="hits">Hits</th>' in out
     assert "<h2>Virulence and stress</h2>" in out
     assert "<p>From hits:</p>\n<pre>source: amrfinder\ncolumns: [element_symbol," in out
@@ -253,6 +255,30 @@ def test_mlst_table_sort_and_filters(tmp_path):
     assert captions(out) == ["ecoli_achtman_4"] and first_cells(out) == ["E1", "E2"]
     out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nfilters: {sample: nope}\n")))
     assert captions(out) == [] and '<td class="empty" colspan="4">No rows</td>' in out
+
+
+@pytest.mark.parametrize("filters, samples", [
+    ("{sequence_type: null}", ["S2", "unknown"]),
+    ("{sequence_type: ~}", ["S2", "unknown"]),
+    ("{sequence_type: [8, null]}", ["S1", "S2", "unknown"]),
+    ("{scheme: null}", ["unknown"]),
+    ("{sequence_type: None}", None),  # the text 'None', not a null
+])
+def test_filter_null(tmp_path, filters, samples):
+    body = block("datatable t", f"source: mlst\nfilters: {filters}\nsort: [sample]\n")
+    if samples is None:
+        with pytest.raises(cli.SpecError):
+            build(mlst_spec(tmp_path, body))
+        return
+    page, manifest, con = cli.build_report(mlst_spec(tmp_path, body))
+    assert [r[0] for r in con.execute("select sample from t").fetchall()] == samples
+
+
+def test_filter_null_text():
+    query = q.normalize("t", {"source": "mlst", "filters": {"sequence_type": [8, None]}})
+    assert q.to_sql(query) == ('select * from "mlst" where ("sequence_type" in (?) or "sequence_type" is null)', ["8"])
+    assert q.filter_text(query) == "sequence_type in 8, null"
+    assert "sequence_type: ['8', null]" in q.to_yaml(query)
 
 
 def test_mlst_table_as_source(tmp_path):
