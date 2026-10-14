@@ -6,6 +6,7 @@ import duckdb
 import pytest
 
 from groundie import cli
+from groundie import query as q
 from groundie.adapters import mash, mlst, utils
 from groundie.cli import build
 
@@ -48,13 +49,15 @@ def spec(tmp_path, body):
 
 def test_build_amr_example():
     out = build(SPEC)
-    assert out.count("<tr>") == 41  # 1 + 13 + 21 datatable rows + 2 header rows + provenance header + 2 inputs
+    assert out.count("<tr>") == 49  # 1 + 1 + 13 + 5 + 21 datatable rows + 5 header rows + provenance header + 2 inputs
     assert "<title>SAMD00654274</title>" in out
     assert out.count("<h1>") == 1 and "<h1>AMR hits for SAMD00654274</h1>" in out  # the author's, from prose
     assert "<h2>Provenance</h2>" in out
     assert "<h2>AMR hits</h2>" in out
     assert "amrfinder preliminary" in out
-    assert rows(SPEC) == {"st": 1, "amr": 13, "virulence": 21}
+    assert rows(SPEC) == {"st": 1, "st_2": 1, "amr": 13, "classes": 5, "virulence": 21}
+    assert '<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th></tr>' in out  # display: mlst
+    assert '<tr><th title="element_class">Class</th><th class="num" title="hits">Hits</th>' in out
     assert "<h2>Virulence and stress</h2>" in out
     assert "<p>From hits:</p>\n<pre>source: amrfinder\ncolumns: [element_symbol," in out
     assert "<p>From amrfinder:</p>\n<pre>adapter: amrfinder\npath: ../data/amrfinder_results/SAMD00654274.tsv\n" in out
@@ -254,6 +257,30 @@ def test_mlst_table_sort_and_filters(tmp_path):
     assert captions(out) == [] and '<td class="empty" colspan="4">No rows</td>' in out
 
 
+@pytest.mark.parametrize("filters, samples", [
+    ("{sequence_type: null}", ["S2", "unknown"]),
+    ("{sequence_type: ~}", ["S2", "unknown"]),
+    ("{sequence_type: [8, null]}", ["S1", "S2", "unknown"]),
+    ("{scheme: null}", ["unknown"]),
+    ("{sequence_type: None}", None),  # the text 'None', not a null
+])
+def test_filter_null(tmp_path, filters, samples):
+    body = block("datatable t", f"source: mlst\nfilters: {filters}\nsort: [sample]\n")
+    if samples is None:
+        with pytest.raises(cli.SpecError):
+            build(mlst_spec(tmp_path, body))
+        return
+    page, manifest, con = cli.build_report(mlst_spec(tmp_path, body))
+    assert [r[0] for r in con.execute("select sample from t").fetchall()] == samples
+
+
+def test_filter_null_text():
+    query = q.normalize("t", {"source": "mlst", "filters": {"sequence_type": [8, None]}})
+    assert q.to_sql(query) == ('select * from "mlst" where ("sequence_type" in (?) or "sequence_type" is null)', ["8"])
+    assert q.filter_text(query) == "sequence_type in 8, null"
+    assert "sequence_type: ['8', null]" in q.to_yaml(query)
+
+
 def test_mlst_table_as_source(tmp_path):
     # a later block reads the query's rows, raw, not the split tables
     body = block("mlst_table st", "source: mlst\n") + block("datatable t", "source: st\nfilters: {sample: S1}\n")
@@ -273,6 +300,77 @@ def test_mlst_table_shape(tmp_path, body, error):
     head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
     with pytest.raises(cli.SpecError, match=re.escape(error)):
         build(mlst_spec(tmp_path, head + block("mlst_table st", body)))
+
+
+def test_datatable_display(tmp_path):
+    body = "source: mlst\ncolumns: [sample, sequence_type]\nsort: [sample]\ndisplay:\n  sequence_type: ST\n"
+    path = mlst_spec(tmp_path, block("datatable st", body))
+    out = build(path)
+    assert '<tr><th>sample</th><th class="num" title="sequence_type">ST</th></tr>' in out
+    assert details(out, "datatable").startswith(
+        "\n<pre>source: mlst\ncolumns: [sample, sequence_type]\nsort: [sample]\ndisplay:\n  sequence_type: ST\n</pre>")
+    page, manifest, con = cli.build_report(path)
+    assert manifest["queries"][0]["display"] == {"sequence_type": "ST"}
+    assert manifest["blocks"][1]["output_columns"] == ["sample", "sequence_type"]  # raw names
+    assert [c[0] for c in con.execute("describe st").fetchall()] == ["sample", "sequence_type"]
+
+
+def test_datatable_display_every_column(tmp_path):
+    # without 'columns', display may name any column of the source
+    out = build(mlst_spec(tmp_path, block("datatable st", "source: mlst\ndisplay: {scheme: Scheme}\n")))
+    assert '<th title="scheme">Scheme</th>' in out
+
+
+@pytest.mark.parametrize("body, error", [
+    ("columns: [sample, sequence_type]\ndisplay: {st: ST}\n",
+     "spec.md:5: datatable 'st': display names 'st', not an output column; output columns: sample, sequence_type"),
+    ("display: {st: ST}\n", "display names 'st', not an output column; output columns: sample, scheme, sequence_type, calls"),
+    ("display: {sequence_type: 7}\n", "datatable 'st': display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: {title: ST}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: ''}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: [sequence_type]\n", "datatable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
+                                   "or names an input whose adapter's titles it shows"),
+])
+def test_datatable_display_shape(tmp_path, body, error):
+    with pytest.raises(cli.SpecError, match=re.escape(error)):
+        build(mlst_spec(tmp_path, block("datatable st", "source: mlst\n" + body)))
+
+
+def test_datatable_display_from_input(tmp_path):
+    # the adapter's titles, by column name, through a sql block; a column it has no title for keeps its name
+    body = (block("sql n", "select sample, sequence_type, 1 as one from mlst order by sample\n")
+            + block("datatable st", "source: n\ndisplay: mlst\n"))
+    path = mlst_spec(tmp_path, body)
+    out = build(path)
+    assert ('<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th>'
+            '<th class="num">one</th></tr>') in out
+    assert details(out, "datatable").startswith("\n<pre>source: n\ndisplay: mlst\n</pre>")  # as written
+    page, manifest, con = cli.build_report(path)
+    assert manifest["queries"][0]["display"] == {"sample": "Sample", "sequence_type": "ST"}  # as resolved
+    assert [c[0] for c in con.execute("describe st").fetchall()] == ["sample", "sequence_type", "one"]
+
+
+@pytest.mark.parametrize("display, error", [
+    ("nope", "spec.md:12: datatable 'st': display 'nope' names no block; inputs: mlst, t"),
+    ("q", "datatable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
+    ("t", "datatable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
+          "adapters with titles: mlst"),
+])
+def test_datatable_display_from_input_shape(tmp_path, display, error):
+    (tmp_path / "t.tsv").write_text("n\n1\n")
+    head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
+    with pytest.raises(cli.SpecError, match=re.escape(error)):
+        build(mlst_spec(tmp_path, head + block("datatable st", f"source: mlst\ndisplay: {display}\n")))
+
+
+@pytest.mark.parametrize("fence, body", [
+    ("query q", "source: mlst\n"),
+    ("matrix q", "source: mlst\nrows: sample\ncols: scheme\n"),
+    ("mlst_table q", "source: mlst\n"),
+])
+def test_display_only_on_datatable(tmp_path, fence, body):
+    with pytest.raises(cli.SpecError, match="unknown key 'display'"):
+        build(mlst_spec(tmp_path, block(fence, body + "display: {sample: Sample}\n")))
 
 
 def test_mlst_table_loci_disagree(tmp_path):
@@ -740,7 +838,7 @@ def test_block_kind_in_messages(tmp_path):
 
 def test_unknown_query_key(tmp_path):
     with pytest.raises(ValueError, match=r"^spec.md:6: datatable 't': unknown key 'filter'; accepted: source, "
-                                         "columns, filters, group_by, measures, sort$"):
+                                         "columns, filters, group_by, measures, sort, display$"):
         build(spec(tmp_path, block("datatable t", "source: amrfinder\nfilter:\n  sample: x\n")))
     with pytest.raises(ValueError, match=r"^spec.md:6: query 't': unknown key 'result'; accepted: source, "):
         build(spec(tmp_path, block("query t", "result: amrfinder\n")))
@@ -960,6 +1058,14 @@ def test_mlst_rows_match_schema():
         Draft202012Validator(adapter.SCHEMA).validate(dict(zip(names, row)))
 
 
+def test_adapter_titles():
+    assert mlst.Mlst.TITLES == {"sample": "Sample", "scheme": "Scheme", "sequence_type": "ST"}
+    properties = mlst.Mlst.SCHEMA["properties"]
+    assert properties["sequence_type"]["title"] == "ST"
+    assert properties["sequence_type"]["description"] == "The ST; null when none was assigned."
+    assert "title" not in properties["calls"]
+
+
 def test_mlst_rows(tmp_path):
     path = tmp_path / "a.tsv"
     # any number of loci, mlst's flags kept in the call, Windows line ends, blank lines skipped
@@ -1001,6 +1107,8 @@ class Part(utils.Struct):
     (str, utils.columns(2, -1), "columns(...) reads a list: its type is list[...]"),
     (list[str], utils.column(2), "a list is read from columns(...)"),
     (bool, utils.column(2), "no reader for <class 'bool'>"),
+    (str, utils.column(2, title=""), "a title is text, the header a datatable shows"),
+    (str, utils.column(2, title=7), "a title is text, the header a datatable shows"),
 ])
 def test_adapter_checks(hint, source, problem):
     assert utils.source_problem(utils.Tsv(header=False), utils.Field(hint, source, None)) == problem

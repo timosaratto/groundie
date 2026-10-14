@@ -19,7 +19,7 @@ class Query:
     name: str
     source: str  # the block read from
     columns: list[str] = field(default_factory=list)  # empty means every column
-    filters: dict[str, list[str]] = field(default_factory=dict)  # column -> accepted values
+    filters: dict[str, list[str | None]] = field(default_factory=dict)  # column -> accepted values; None: null
     group_by: list[str] = field(default_factory=list)  # set: one row per distinct combination of these
     measures: dict[str, str] = field(default_factory=dict)  # output alias -> fn(column), per group
     sort: list[str] = field(default_factory=list)
@@ -118,8 +118,9 @@ def normalize(name, block, component="datatable", taken=()):
             values = [values]
         if not values:
             raise SpecError(f"{who}: filter {column!r} needs at least one value")
-        # YAML types bare values (007 -> 7, yes -> True); filter values are always strings.
-        filters[column] = [str(v) for v in values]
+        # YAML types bare values (007 -> 7, yes -> True); filter values are always strings, but null (or ~)
+        # stays None and matches a null.
+        filters[column] = [None if v is None else str(v) for v in values]
     measures = {str(alias): str(text) for alias, text in (block.get("measures") or {}).items()}
     if measures and not group_by:
         raise SpecError(f"{who}: 'measures' needs 'group_by'")
@@ -180,8 +181,12 @@ def to_sql(q):
     if q.filters:
         clauses = []
         for column, values in q.filters.items():
-            clauses.append(f"{ident(column)} in ({', '.join('?' * len(values))})")
-            params.extend(values)
+            known = [v for v in values if v is not None]
+            tests = [f"{ident(column)} in ({', '.join('?' * len(known))})"] if known else []
+            if None in values:  # 'in' never matches a null
+                tests.append(f"{ident(column)} is null")
+            clauses.append(tests[0] if len(tests) == 1 else f"({' or '.join(tests)})")
+            params.extend(known)
         sql += " where " + " and ".join(clauses)
     if q.group_by:
         sql += " group by " + ", ".join(ident(c) for c in q.group_by)
@@ -263,8 +268,9 @@ def filters_and_shape(q):
 
 def filter_text(q):
     """The filters as one phrase, e.g. 'element_type = AMR, sample in A, B'; empty when there are none."""
+    shown = {column: ["null" if v is None else v for v in values] for column, values in q.filters.items()}
     return ", ".join(f"{column} = {values[0]}" if len(values) == 1 else f"{column} in {', '.join(values)}"
-                     for column, values in q.filters.items())
+                     for column, values in shown.items())
 
 
 def shape(q):

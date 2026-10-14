@@ -103,7 +103,12 @@ options: {null: NA}     # optional; only tsv and csv take options
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
 | `newick` | Newick trees | One row per node: `file`, `tree`, `node`, `parent`, `label`, `branch_length`, `support`, `is_tip`, `comment`. Drawn by a `tree` block |
 
-The column names come from the adapter, not from the file. The `amrfinder` columns:
+The column names come from the adapter, not from the file.
+
+Titles, which a datatable shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
+and `sequence_type` ST. No other adapter declares titles yet.
+
+The `amrfinder` columns:
 
 ```
 text:    sample, contig_id, strand, element_symbol, element_name, scope, element_type, element_subtype,
@@ -148,11 +153,34 @@ sort: [sample]                     # a group_by column or a measure
 Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(column)`, every value of the
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
-- These are all the query keys. Any other key is an error, except a matrix's layout keys.
+- These are all the query keys. Any other key is an error, except a matrix's layout keys and a datatable's
+  `display`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
+- `null` (or `~`) matches a missing value: `sequence_type: null` keeps the genomes with no ST, and
+  `sequence_type: [8, null]` those with ST 8 or none. `None` is the text `None`.
 - Joins, expressions, ranges and descending order need a `sql` block.
 - A block reading a `sql` block, with no `sort`, keeps the order of the statement's `order by`.
+
+### display
+
+A datatable, and only a datatable, takes `display`: a title for some of its columns, shown as the header in
+place of the column's name.
+
+```yaml
+source: mlst
+columns: [sample, sequence_type]
+display:
+  sequence_type: ST        # the header shows ST; the column's name stays in its title
+```
+
+- Each key is one of the block's output columns; each title is text.
+- `display` may instead name an input, whose adapter's titles it shows: `display: mlst` titles `sample`,
+  `scheme` and `sequence_type` as `Sample`, `Scheme` and `ST`. It matches by column name, so it works through
+  a `query` or `sql` block too, as long as the name is unchanged; a column the adapter has no title for keeps
+  its name. Only adapters that declare titles can be named: see [Adapters](#adapters).
+- Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
+  `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 
 ## sql
 
@@ -387,12 +415,13 @@ path: data/phylogeny/core.nwk
 
 ## Sequence types
 
-One row per genome, from mlst. An empty ST means none was assigned.
+One row per genome, from mlst. A – in the ST column means none was assigned.
 
 ```datatable st
 source: mlst
 columns: [sample, sequence_type]
 sort: [sample]
+display: mlst
 ```
 
 ```tree phylogeny
