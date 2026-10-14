@@ -122,7 +122,8 @@ numbers: start_pos, stop_pos, target_length, ref_length, pct_coverage, pct_ident
 ```
 
 `sample` is the file's `Name` column, written by `--name`. A file without it takes `sample` from its file name,
-without directories and the last extension: `amrfinder/KP01.tsv` is `KP01`. `element_type`,
+without directories and the last extension: `amrfinder/KP01.tsv` is `KP01`. Two such files that give the
+same sample, as `KP01/amrfinder.tsv` and `KP02/amrfinder.tsv` do, fail the input: run with `--name`. `element_type`,
 `element_subtype`, `element_class` and `element_subclass` are its `Type`, `Subtype`, `Class` and `Subclass`.
 Files from versions before 4.0, which name most columns differently, are not read: the input fails, naming
 the column it can't find.

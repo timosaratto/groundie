@@ -23,9 +23,10 @@ three steps:
 3. The field's type reads the text: str as is, int and float strictly, and a Struct by its PATTERN, such as
    '{locus}({call})', which splits the text into the Struct's fields, each read as a cell is, from step 1.
 
+A name matches the header ignoring case, as in DuckDB; a UTF-8 byte order mark before the header is dropped.
 A column named in the header can say what to read where a file lacks it: column("Name",
 absent=sample_from_file_name). That too is one value per file, from its path, as DuckDB's
-read_csv(filename = true) gives.
+read_csv(filename = true) gives; so two files of an input that give the same value, other than null, fail it.
 
 A field may also have a title, column(3, title="ST"): the header a datatable shows for it when its display
 names the input, 'display: mlst'. A column named in the header is titled by that name unless it says
@@ -207,7 +208,7 @@ class Adapter:
     def rows(cls, path, options):
         path = Path(path)
         lines = [(n, line.split(cls.FORMAT.delimiter))
-                 for n, line in enumerate(path.read_text().splitlines(), 1) if line.strip()]
+                 for n, line in enumerate(path.read_text(encoding="utf-8-sig").splitlines(), 1) if line.strip()]
         if cls.FORMAT.header and not lines:  # not even a header: no rows
             return []
         header = lines.pop(0)[1] if cls.FORMAT.header else None
@@ -224,15 +225,29 @@ class Adapter:
         return out
 
     @classmethod
+    def path_values(cls, path):
+        """What the file's path gives in place of the columns it lacks, by field, nulls left out. Like
+        read_csv(filename = true), each tells the file apart: two files of an input mustn't give the same."""
+        if not cls.FORMAT.header:
+            return {}
+        with open(path, encoding="utf-8-sig") as f:
+            header = next((line.rstrip("\r\n").split(cls.FORMAT.delimiter) for line in f if line.strip()), None)
+        if header is None:
+            return {}
+        return {name: at.value for name, at in zip(cls.FIELDS, cls.cells(header, path))
+                if isinstance(at, Absent) and at.value is not None}
+
+    @classmethod
     def cells(cls, header, path):
         """Each field's cells in a line: an index, a slice for a list, or the Absent value of a column the
-        file lacks."""
+        file lacks. A name matches the header ignoring case, as DuckDB's identifiers do."""
+        folded = [h.casefold() for h in header] if header is not None else None
         out = []
         for name, f in cls.FIELDS.items():
             s = f.source
             if isinstance(s.first, str):
-                if s.first in header:
-                    out.append(header.index(s.first))
+                if s.first.casefold() in folded:
+                    out.append(folded.index(s.first.casefold()))
                 elif s.absent:
                     try:
                         out.append(Absent(read(s.absent(path), f.hint, None)))

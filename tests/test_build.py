@@ -1086,6 +1086,12 @@ def test_amrfinder_rows(tmp_path):
     lines = [line.split("\t", 1)[1] for line in AMRFINDER.read_text().splitlines()[:2]]
     (tmp_path / "KP01.tsv").write_text(f"{lines[0]}\tHierarchy node\n{lines[1]}\tparC_S80Y\n")
     assert amrfinder.Amrfinder.rows(tmp_path / "KP01.tsv", {}) == [("KP01", *hit[1:-1], "parC_S80Y")]
+    # a byte order mark, or a header in another case, still finds Name rather than falling back to the file's
+    lines = AMRFINDER.read_text().splitlines()[:2]
+    (tmp_path / "KP02.tsv").write_text("﻿" + "\n".join(lines) + "\n", encoding="utf-8")
+    (tmp_path / "KP03.tsv").write_text(lines[0].lower() + "\n" + lines[1] + "\n")
+    for name in ("KP02.tsv", "KP03.tsv"):
+        assert amrfinder.Amrfinder.rows(tmp_path / name, {}) == [hit]
 
 
 def test_amrfinder_missing_column(tmp_path):
@@ -1097,6 +1103,23 @@ def test_amrfinder_missing_column(tmp_path):
         amrfinder.Amrfinder.rows(tmp_path / "a.tsv", {})
     (tmp_path / "a.tsv").write_text("")
     assert amrfinder.Amrfinder.rows(tmp_path / "a.tsv", {}) == []
+
+
+def test_amrfinder_sample_from_file_names(tmp_path):
+    header, hit = [line.split("\t", 1)[1] for line in AMRFINDER.read_text().splitlines()[:2]]  # without --name
+    for sample in ("KP01", "KP02"):
+        (tmp_path / sample).mkdir()
+        (tmp_path / sample / "amrfinder.tsv").write_text(f"{header}\n{hit}\n")
+        (tmp_path / f"{sample}.tsv").write_text(f"{header}\n{hit}\n")
+    text = block("input a", "adapter: amrfinder\npath: '*.tsv'\n") + block("DataTable t", "source: a\n")
+    assert cli.build_report(write(tmp_path, text))[1]["blocks"][1]["rows"] == 2  # KP01 and KP02
+    first, second = (tmp_path / s / "amrfinder.tsv" for s in ("KP01", "KP02"))
+    error = (f"input 'a': {first} and {second} both lack column 'Name', and their names both give sample "
+             f"'amrfinder'")
+    with pytest.raises(cli.SpecError, match=re.escape(error) + "$"):
+        build(write(tmp_path, text.replace("'*.tsv'", "'*/amrfinder.tsv'")))
+    (tmp_path / "KP02" / "amrfinder.tsv").write_text(AMRFINDER.read_text())  # one with --name: no clash
+    build(write(tmp_path, text.replace("'*.tsv'", "'*/amrfinder.tsv'")))
 
 
 def test_mlst_rows(tmp_path):

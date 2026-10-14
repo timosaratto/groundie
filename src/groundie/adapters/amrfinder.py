@@ -12,8 +12,9 @@ class Amrfinder(Adapter):
     """One AMRFinderPlus hit: a gene or point mutation found in one genome."""
 
     FORMAT = Tsv(header=True, null="NA")
+    # Every field is '| None': NA is null in any column, as read_csv(nullstr = 'NA') read it before.
 
-    sample: str = column("Name", title="Sample", absent=sample_from_file_name)
+    sample: str | None = column("Name", title="Sample", absent=sample_from_file_name)
     "The genome, as given to --name; without --name, the file's name without its directories and extension."
 
     protein_id: str | None = column("Protein id")
@@ -31,19 +32,19 @@ class Amrfinder(Adapter):
     strand: str | None = column("Strand")
     "'+' or '-'; null for protein input."
 
-    element_symbol: str = column("Element symbol")
+    element_symbol: str | None = column("Element symbol")
     "The gene or mutation: 'tet(38)', 'parC_S80F'."
 
-    element_name: str = column("Element name")
+    element_name: str | None = column("Element name")
     "What it is: 'tetracycline efflux MFS transporter Tet(38)'."
 
-    scope: str = column("Scope")
+    scope: str | None = column("Scope")
     "'core' or 'plus'."
 
-    element_type: str = column("Type")
+    element_type: str | None = column("Type")
     "AMR, STRESS or VIRULENCE."
 
-    element_subtype: str = column("Subtype")
+    element_subtype: str | None = column("Subtype")
     "AMR, POINT, BIOCIDE, METAL, VIRULENCE, ..."
 
     element_class: str | None = column("Class")
@@ -52,10 +53,10 @@ class Amrfinder(Adapter):
     element_subclass: str | None = column("Subclass")
     "Null for virulence hits."
 
-    method: str = column("Method")
+    method: str | None = column("Method")
     "How it was found: EXACTX, BLASTX, POINTX, PARTIALX, HMM, ..."
 
-    target_length: int = column("Target length")
+    target_length: int | None = column("Target length")
 
     ref_length: int | None = column("Reference sequence length")
     "Null where no reference was aligned, as for a hit found by HMM alone; so are the fields to ref_name."
