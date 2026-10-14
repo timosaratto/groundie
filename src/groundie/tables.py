@@ -35,7 +35,7 @@ def split(columns, rows, by, ordered):
 
 
 def mlst_tables(name, columns, rows, ordered):
-    """An mlst_table's tables: one per scheme, captioned with it, its loci as headers and the calls in the
+    """An MlstTable's tables: one per scheme, captioned with it, its loci as headers and the calls in the
     cells. Genomes with no scheme found (a null scheme) come last. Without ordered, rows go by sample."""
     groups = split(columns, rows, "scheme", ordered)
     if None in groups:
@@ -47,7 +47,7 @@ def mlst_tables(name, columns, rows, ordered):
         group = [tuple(row[i] for i in at) for row in group]  # sample, sequence_type, calls
         if not ordered:
             group.sort(key=lambda row: by_name(row[0]))
-        loci = scheme_loci(f"mlst_table {name!r}: scheme {scheme!r}", group)
+        loci = scheme_loci(f"MlstTable {name!r}: scheme {scheme!r}", group)
         tables.append(Table(
             "No scheme found" if scheme is None else scheme,
             [(c, LABELS[c]) for c in fixed] + [(locus, locus) for locus in loci],

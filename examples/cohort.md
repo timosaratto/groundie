@@ -19,7 +19,7 @@ path: ../data/tree_results/cohort.nwk
 
 One row per genome, from mlst, one table per scheme, headed by the scheme's loci. A – means no ST was assigned, or, in a call, no allele was found. In a call, `~` marks a novel allele and `?` a partial match.
 
-```mlst_table st
+```MlstTable st
 source: mlst
 sort: [sample]
 ```
@@ -41,7 +41,7 @@ group by m.sample, m.sequence_type
 order by m.sample
 ```
 
-```datatable summary_table
+```DataTable summary_table
 source: summary
 ```
 
@@ -49,7 +49,7 @@ source: summary
 
 A neighbour-joining tree of mash distances between the ten genomes: coarse, good for seeing which genomes sit together and not for dating or fine branching order. The genome with no sequence type sits inside the ST8 clade, which suggests it is an ST8 whose typing failed rather than a new lineage.
 
-```tree phylogeny
+```Tree phylogeny
 source: tree
 tips: summary
 match: sample
@@ -61,7 +61,7 @@ color: sequence_type
 
 AMRFinderPlus hits of type AMR, genes and point mutations: one row per genome, one column per gene. The shade is the best identity to the reference, from 90 % (light) to 100 % (dark); ◆ marks a gene with at least one partial copy (coverage below 100 %). Hover a cell for its values and how many copies were found.
 
-```matrix resistome
+```Matrix resistome
 source: amrfinder
 filters:
   element_type: AMR

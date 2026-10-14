@@ -31,8 +31,8 @@ def test_render_blocks_for_apps_host():
     assert not result.is_error
     text = result.content[0].text
     assert text.startswith("cohort.md:3: input mlst: 10 rows; columns: sample, scheme")
-    assert "\ncohort.md:52: tree phylogeny: 10 tips, 10 matched\n" in text
-    for shown in ("mlst_table st","datatable summary_table", "matrix resistome"):
+    assert "\ncohort.md:52: Tree phylogeny: 10 tips, 10 matched\n" in text
+    for shown in ("MlstTable st", "DataTable summary_table", "Matrix resistome"):
         assert f"\n\n{shown}:\n" in text
     assert "\nsql summary:\n" not in text and "\ninput mlst:\n" not in text  # neither shown nor last
     html = result.structured_content["html"]
@@ -46,24 +46,24 @@ def test_render_blocks_for_apps_host():
 def test_render_blocks_text_only_client():
     _, _, result = call({"path": str(COHORT)})
     assert result.structured_content is None
-    assert "tree phylogeny: 10 tips" in result.content[0].text
+    assert "Tree phylogeny: 10 tips" in result.content[0].text
 
 
 def test_render_blocks_inline():
-    blocks = AMRFINDER + "\n```datatable classes\nsource: amrfinder\ngroup_by: [element_class]\n```\n"
+    blocks = AMRFINDER + "\n```DataTable classes\nsource: amrfinder\ngroup_by: [element_class]\n```\n"
     _, _, result = call({"blocks": blocks, "base_dir": str(DATA)}, APPS_HOST)
     assert not result.is_error
     text = result.content[0].text
     assert text.startswith("blocks:1: input amrfinder: 334 rows; columns: sample, contig_id")
-    assert "\n\ndatatable classes:\nelement_class\n" in text
+    assert "\n\nDataTable classes:\nelement_class\n" in text
     assert '<section class="block datatable">' in result.structured_content["html"]
 
 
 def test_render_blocks_display_keeps_raw_names():
-    blocks = AMRFINDER + ("\n```datatable classes\nsource: amrfinder\ngroup_by: [element_class]\n"
+    blocks = AMRFINDER + ("\n```DataTable classes\nsource: amrfinder\ngroup_by: [element_class]\n"
                           "display: {element_class: Class}\n```\n")
     _, _, result = call({"blocks": blocks, "base_dir": str(DATA)}, APPS_HOST)
-    assert "\n\ndatatable classes:\nelement_class\n" in result.content[0].text
+    assert "\n\nDataTable classes:\nelement_class\n" in result.content[0].text
     assert '<th title="element_class">Class</th>' in result.structured_content["html"]
 
 
@@ -100,8 +100,8 @@ def test_render_blocks_arguments():
         ({"path": str(COHORT), "base_dir": str(DATA)},
          "base_dir goes with blocks; with path, input paths resolve against the file's directory"),
         ({"path": "cohort.md"}, "path 'cohort.md' is relative; pass the file's absolute path"),
-        ({"blocks": "```datatable t\nsource: nope\n```\n"},
-         "blocks:1: datatable 't': source 'nope' names no block; readable here: none"),
+        ({"blocks": "```DataTable t\nsource: nope\n```\n"},
+         "blocks:1: DataTable 't': source 'nope' names no block; readable here: none"),
     ]:
         _, _, result = call(args)
         assert result.is_error and result.content[0].text.endswith(": " + message)
@@ -113,4 +113,4 @@ def test_read_guide():
             return await client.call_tool("read_guide", {})
     text = asyncio.run(go()).content[0].text
     assert text.startswith("# Writing groundie blocks")
-    assert "```input " in text and "```datatable " in text and "render_blocks" in text
+    assert "```input " in text and "```DataTable " in text and "render_blocks" in text

@@ -39,9 +39,9 @@ def tsv(columns, rows, total):
 
 
 @apps.tool(resource_uri=VIEW, description=(
-    "Run groundie blocks and show the user every datatable, matrix and tree among them, with the prose "
-    "around them. Returns one summary line per block, the warnings, and the rows of each datatable and "
-    "matrix, and of the last block when it is an input, sql or query block. Pass either path, the absolute "
+    "Run groundie blocks and show the user every DataTable, Matrix and Tree among them, with the prose "
+    "around them. Returns one summary line per block, the warnings, and the rows of each DataTable and "
+    "Matrix, and of the last block when it is an input, sql or query block. Pass either path, the absolute "
     "path of a Markdown file of blocks, or blocks, the Markdown itself, with base_dir, the absolute "
     "directory that relative input paths resolve against. Call read_guide first for the format."
 ))
@@ -65,7 +65,7 @@ def render_blocks(
     text = [cli.summary_line(manifest["file"]["path"], b) for b in listed]
     text += [f"warning: {w}" for w in manifest["warnings"]]
     for i, b in enumerate(listed):
-        if b["kind"] in (*cli.TABLES, *cli.MATRICES) or (i == len(listed) - 1 and b["kind"] != "tree"):
+        if b["kind"] in (*cli.TABLES, *cli.MATRICES) or (i == len(listed) - 1 and b["kind"] != "Tree"):
             rows = con.execute(f"select * from {ident(b['name'])} limit {MAX_ROWS}").fetchall()
             text.append(f"\n{b['kind']} {b['name']}:\n{tsv(b['output_columns'], rows, b['rows'])}")
     con.close()

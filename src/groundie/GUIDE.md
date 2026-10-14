@@ -19,11 +19,14 @@ A block opens with ```` ```<kind> <name> ````: one space, then a name of letters
 closes with a line of three backticks. Everything outside blocks is Markdown prose. There is no front matter.
 
 ````markdown
-```datatable st
+```DataTable st
 source: mlst
 columns: [sample, sequence_type]
 ```
 ````
+
+Blocks that show something on the page are PascalCase, like JSX components; blocks that only make data are
+lowercase.
 
 | Kind | Shows | Can be a source for later blocks |
 | --- | --- | --- |
@@ -33,26 +36,26 @@ columns: [sample, sequence_type]
 | `clusters` | Nothing | Yes: one row per sample, its cluster |
 | `checks` | Nothing | Yes: one row per source row, PASS or FAIL |
 | `calls` | Nothing | Yes: one row per sample, true or false per call |
-| `datatable` | A datatable | Yes: the rows it shows |
-| `matrix` | A grid | Yes: its query's rows, not the pivoted grid |
-| `amrfinder_matrix` | A gene × sample grid of AMRFinderPlus hits | Yes: as a `matrix` |
-| `mlst_table` | One datatable of mlst results per scheme, headed by its loci | Yes: its query's rows, not the split tables |
-| `tree` | A phylogeny | No |
+| `DataTable` | A datatable | Yes: the rows it shows |
+| `Matrix` | A grid | Yes: its query's rows, not the pivoted grid |
+| `AmrfinderMatrix` | A gene × sample grid of AMRFinderPlus hits | Yes: as a `Matrix` |
+| `MlstTable` | One datatable of mlst results per scheme, headed by its loci | Yes: its query's rows, not the split tables |
+| `Tree` | A phylogeny | No |
 
-The source of a block is the block it reads, named by its `source:` key. Every block except a `tree` makes an
+The source of a block is the block it reads, named by its `source:` key. Every block except a `Tree` makes an
 SQL table with the block's name, holding the rows described in the last column above. Later blocks read it
 with `source: <name>`, or by that name inside a `sql` block.
 
 The rules:
 
 1. Every block has a kind and a name. A name is used once in the file, across blocks of all kinds.
-2. `source:` names a block above it, or any `input`, wherever it is. So do a tree's `tips` and a calls
+2. `source:` names a block above it, or any `input`, wherever it is. So do a `Tree`'s `tips` and a calls
    block's `samples`.
-3. A `query` is a datatable that shows nothing. Use it for rows that later blocks read but the reader need not
-   see.
+3. A `query` is a `DataTable` that shows nothing. Use it for rows that later blocks read but the reader need
+   not see.
 
 Other fences are shown as code. Give them at most one word after the backticks. A fence that starts with a
-block kind but is not read as a block, such as ```` ```datatable ```` with no name, is shown as code with a
+block kind but is not read as a block, such as ```` ```DataTable ```` with no name, is shown as code with a
 warning.
 
 ### Order
@@ -90,7 +93,7 @@ options: {null: NA}     # optional; only tsv and csv take options
 - A path that is not a glob must name a file, not a directory.
 - A relative path resolves against the directory of the report file. For blocks sent inline to
   `render_blocks`, it resolves against `base_dir`. An absolute path always works.
-- An input shows nothing. To show its rows, read it with a `datatable`.
+- An input shows nothing. To show its rows, read it with a `DataTable`.
 
 ## Adapters
 
@@ -101,11 +104,11 @@ options: {null: NA}     # optional; only tsv and csv take options
 | `mash` | `mash dist` or `mash triangle -E` output, no header | `reference`, `query` (sample names: the directories and a `.fa`, `.fasta`, `.fna`, `.fas` or `.msh` extension, with or without `.gz`, are stripped), `distance`, `p_value`, `shared_hashes`, `sketch_hashes` |
 | `tsv`, `csv` | Any delimited file | `file` (the file's name), then the file's columns as named. Numbers are read as numbers |
 | `json` | Newline-delimited objects, or one array of objects | `file`, then one column per key |
-| `newick` | Newick trees | One row per node: `file`, `tree`, `node`, `parent`, `label`, `branch_length`, `support`, `is_tip`, `comment`. Drawn by a `tree` block |
+| `newick` | Newick trees | One row per node: `file`, `tree`, `node`, `parent`, `label`, `branch_length`, `support`, `is_tip`, `comment`. Drawn by a `Tree` block |
 
 The column names come from the adapter, not from the file.
 
-Titles, which a datatable shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
+Titles, which a `DataTable` shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
 and `sequence_type` ST. No other adapter declares titles yet.
 
 The `amrfinder` columns:
@@ -124,9 +127,9 @@ Only `tsv` and `csv` take `options`:
 - `null`: the string read as null
 - `header`: default true. With `header: false` the columns are named `column0`, `column1`, and so on
 
-## Query keys: query, datatable, matrix
+## Query keys: query, DataTable, Matrix
 
-`query`, `datatable` and `matrix` blocks share these keys. `source` is required; the rest are optional.
+`query`, `DataTable` and `Matrix` blocks share these keys. `source` is required; the rest are optional.
 
 Plain rows:
 
@@ -153,8 +156,8 @@ sort: [sample]                     # a group_by column or a measure
 Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(column)`, every value of the
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
-- These are all the query keys. Any other key is an error, except a matrix's layout keys and a datatable's
-  `display`.
+- These are all the query keys. Any other key is an error, except a `Matrix`'s layout keys and a
+  `DataTable`'s `display`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
 - `null` (or `~`) matches a missing value: `sequence_type: null` keeps the genomes with no ST, and
@@ -164,7 +167,7 @@ group, sorted and joined with `, `, and `distinct(column)`, the same with each v
 
 ### display
 
-A datatable, and only a datatable, takes `display`: a title for some of its columns, shown as the header in
+A `DataTable`, and only a `DataTable`, takes `display`: a title for some of its columns, shown as the header in
 place of the column's name.
 
 ```yaml
@@ -186,7 +189,7 @@ display:
 
 One SELECT statement in DuckDB SQL. It reads the SQL tables of inputs and of blocks above it, by name, and has
 no access to files or the network. Any DuckDB SELECT works, including `with` and `with recursive`, window
-functions and `filter`. It shows nothing, so follow it with a `datatable` that reads it:
+functions and `filter`. It shows nothing, so follow it with a `DataTable` that reads it:
 
 ````markdown
 ```sql summary
@@ -196,7 +199,7 @@ group by all
 order by amr_hits desc, m.sample
 ```
 
-```datatable summary_table
+```DataTable summary_table
 source: summary
 ```
 ````
@@ -210,8 +213,8 @@ from mlst m, unnest(m.calls) as u(c)
 where c.call is null or not regexp_full_match(c.call, '\d+')
 ```
 
-A datatable shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
-datatable over an `mlst` input with no columns chosen shows `calls` that way. Select its fields, as above, or
+A `DataTable` shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
+`DataTable` over an `mlst` input with no columns chosen shows `calls` that way. Select its fields, as above, or
 format it as text in SQL. Each genome's calls as one cell, `arcC:3, aroE:1, ...`:
 
 ```sql
@@ -236,7 +239,7 @@ linkage: single                 # optional; single is the only linkage so far
 - It makes an SQL table with `sample`, `cluster` and `cluster_size`, one row per sample that appears in a
   pair. A sample linked to none is a cluster of its own.
 - Clusters are named `C1`, `C2`, ... by size, largest first, then by their first sample in name order.
-- It shows nothing. To show it, read it with a `datatable`, or join it in a `sql` block.
+- It shows nothing. To show it, read it with a `DataTable`, or join it in a `sql` block.
 
 ## checks
 
@@ -255,7 +258,7 @@ checks:                              # one or more columns, each with min, max, 
   null on a PASS.
 - A null value fails its check: `pct_identity missing`.
 - Give min or above, not both, and max or below, not both.
-- It shows nothing. To show it, read it with a `datatable`, or join it in a `sql` block.
+- It shows nothing. To show it, read it with a `DataTable`, or join it in a `sql` block.
 
 ## calls
 
@@ -275,9 +278,9 @@ calls:                          # one or more: name: {any: [values]} or {all: [v
 - A sample with no rows in source is false for every call. AMRFinderPlus writes no rows for a genome with no
   hits, so give `samples` to keep such genomes.
 - Values are compared as text, as in filters. A call's name may not be the key's.
-- It shows nothing. To show it, read it with a `datatable`, or join it in a `sql` block.
+- It shows nothing. To show it, read it with a `DataTable`, or join it in a `sql` block.
 
-## matrix
+## Matrix
 
 The query keys, plus the layout keys below. The query need not be grouped: when several of its rows fall in
 one cell, the cell shows the first, or the one `pick` chooses, and its hover text says how many rows there
@@ -302,7 +305,7 @@ symmetric: true                              # optional, with one rows column: a
 ```
 
 `rows`, `cols`, `value`, the `mark` column and the `pick` column are columns of the query's result. A cell's
-values are in its `title` attribute in the HTML, shown on hover. A block that reads a matrix gets the query's
+values are in its `title` attribute in the HTML, shown on hover. A block that reads a `Matrix` gets the query's
 rows, not the grid.
 
 A distance matrix from pairs, one number per cell, the full square from a file that lists each pair once:
@@ -319,9 +322,9 @@ symmetric: true
 Without `symmetric`, each pair is one cell, so such a file gives one triangle. The diagonal stays blank unless
 the query has rows that pair a key with itself.
 
-## amrfinder_matrix
+## AmrfinderMatrix
 
-A `matrix` with its layout set for AMRFinderPlus hits: one row per gene, one column per sample.
+A `Matrix` with its layout set for AMRFinderPlus hits: one row per gene, one column per sample.
 
 ```yaml
 source: amrfinder                         # an input loaded by the amrfinder adapter
@@ -329,15 +332,15 @@ filters: {element_class: AMINOGLYCOSIDE}  # optional: any filters, e.g. element_
 partial_below: 80                         # optional: ◆ marks coverage below this (%); default 100
 ```
 
-- It takes `source`, `filters`, `sort` and `partial_below`. For any other layout, write a `matrix`.
+- It takes `source`, `filters`, `sort` and `partial_below`. For any other layout, write a `Matrix`.
 - Rows are `element_symbol`, with `element_type` before it unless a filter picks one type. Columns are
-  `sample`. The order is a matrix's default: the most common genes first.
+  `sample`. The order is a `Matrix`'s default: the most common genes first.
 - A cell with several hits shows the most complete one (`pick: max(pct_coverage)`); hovering gives its
   identity and coverage. ◆ marks a cell whose most complete hit is still partial (coverage below
   `partial_below`).
-- 'View query' shows the `matrix` it stands for, every setting written out.
+- 'View query' shows the `Matrix` it stands for, every setting written out.
 
-## mlst_table
+## MlstTable
 
 mlst results as one datatable per scheme, captioned with the scheme. The scheme's locus names are the
 headers and the cells hold the calls: the input's `{locus: arcC, call: 3}` shows as `3` under `arcC`.
@@ -348,7 +351,7 @@ filters: {scheme: saureus}    # optional: any filters on the input's columns
 sort: [sample]                # optional
 ```
 
-- It takes `source`, `filters` and `sort`. For other columns, write a `datatable`.
+- It takes `source`, `filters` and `sort`. For other columns, write a `DataTable`.
 - The columns are `Sample`, `ST`, then the scheme's loci. `Sample` and `ST` keep their column's name in
   their header's `title`.
 - Allele numbers compare only within a scheme, so each scheme gets its own table. Genomes with no scheme
@@ -356,35 +359,35 @@ sort: [sample]                # optional
 - Without `sort`, the tables go by how many genomes they hold, most first, then by scheme, and the rows by
   sample. With `sort`, both follow the sorted result.
 - Filters and sort read the input's columns: `sample`, `scheme` and `sequence_type`. To pick genomes by a
-  call, write a `sql` block over the input and read it with a `datatable`.
+  call, write a `sql` block over the input and read it with a `DataTable`.
 - Genomes of one scheme calling different loci are an error.
 - A block that reads it gets its query's rows, as the input has them, not the split tables.
 
-## tree
+## Tree
 
 ```yaml
 source: tree                    # an input loaded by the newick adapter
-tips: mlst                      # optional: a block with one row per tip; any kind but tree, an input included
+tips: mlst                      # optional: a block with one row per tip; any kind but Tree, an input included
 match: sample                   # needed with tips: the column that equals the tip label, as exact text
 label: [sample, sequence_type]  # columns shown at the tips; default: the tip label
 color: sequence_type            # the 3 most frequent values get a colour each, the rest share a grey
 ```
 
-- These are all the tree keys. A tree takes no query keys: to filter or join the tip rows, do it in a `query`
+- These are all the `Tree` keys. A `Tree` takes no query keys: to filter or join the tip rows, do it in a `query`
   or `sql` block and name that block in `tips`.
 - `label` and `color` need `tips`.
 - When the input holds several trees, pick one with `file: core.nwk` and `tree: 1`, the tree's position in
   that file.
-- A tree makes no SQL table. No block can read it.
+- A `Tree` makes no SQL table. No block can read it.
 
 A tip with no matching row is drawn and reported, not an error. Check the summary line:
-`tree phylogeny: 12 tips, 12 matched`.
+`Tree phylogeny: 12 tips, 12 matched`.
 
 ## What the output adds
 
 The output adds these itself, so leave them out of the prose:
 
-- under each datatable (an `mlst_table` included), matrix (an `amrfinder_matrix` included) and tree: its filters, its query, and its
+- under each `DataTable` (an `MlstTable` included), `Matrix` (an `AmrfinderMatrix` included) and `Tree`: its filters, its query, and its
   lineage, a walk back through its sources to the inputs, each with its settings or, for a `sql` block, its
   statement
 - in a built report: a provenance footer listing every data file with its hash
@@ -417,14 +420,14 @@ path: data/phylogeny/core.nwk
 
 One row per genome, from mlst. A – in the ST column means none was assigned.
 
-```datatable st
+```DataTable st
 source: mlst
 columns: [sample, sequence_type]
 sort: [sample]
 display: mlst
 ```
 
-```tree phylogeny
+```Tree phylogeny
 source: tree
 tips: mlst
 match: sample
@@ -449,11 +452,11 @@ group by all
 order by amr_hits desc, m.sample
 ```
 
-```datatable summary_table
+```DataTable summary_table
 source: summary
 ```
 
-```amrfinder_matrix beta_lactams
+```AmrfinderMatrix beta_lactams
 source: amrfinder
 filters: {element_class: BETA-LACTAM}
 ```
@@ -462,7 +465,7 @@ filters: {element_class: BETA-LACTAM}
 ## Building a report
 
 1. Learn each data file's columns and values: build a short file with just its `input` block and a
-   `datatable` over it, or send the `input` block to `render_blocks`. The column names come from the adapter,
+   `DataTable` over it, or send the `input` block to `render_blocks`. The column names come from the adapter,
    not from the file: see [Adapters](#adapters).
 2. Write the report.
 3. Build it, from the groundie checkout:
@@ -472,8 +475,8 @@ filters: {element_class: BETA-LACTAM}
    ```
 
    - It reads a file only: there is no inline input.
-   - Each block prints one line: `cohort.md:58: amrfinder_matrix beta_lactams: 64 rows; columns:
-     element_symbol, ...`. A tree prints its tips: `cohort.md:28: tree phylogeny: 12 tips, 12 matched`.
+   - Each block prints one line: `cohort.md:58: AmrfinderMatrix beta_lactams: 64 rows; columns:
+     element_symbol, ...`. A `Tree` prints its tips: `cohort.md:28: Tree phylogeny: 12 tips, 12 matched`.
    - A warning goes to stderr and the report is still built. `0 rows` usually means a wrong filter value.
    - An error stops the build with exit code 1 and one line on stderr:
      `groundie: error: cohort.md:47: sql 'summary': ...`
@@ -481,12 +484,12 @@ filters: {element_class: BETA-LACTAM}
    `<svg>`. Take every number and claim in the prose from a built datatable, never from counting rows in the
    data files.
 
-To look something up in the data while writing, add a `sql` block and a `datatable` over it, build, read the
+To look something up in the data while writing, add a `sql` block and a `DataTable` over it, build, read the
 datatable, then remove both.
 
 ## Rendering blocks in chat
 
-The MCP tool `render_blocks` runs blocks and shows every datatable, matrix and tree among them to the user in
+The MCP tool `render_blocks` runs blocks and shows every `DataTable`, `Matrix` and `Tree` among them to the user in
 the chat, in order, with the prose between them. Pass one of:
 
 - `path`: the absolute path of a Markdown file of blocks. Relative input paths resolve against its directory.
@@ -497,9 +500,9 @@ The text result, which only you see, holds:
 
 - one summary line per block, as the CLI prints them, with `blocks` as the file name for inline text
 - the warnings
-- the rows, as TSV, of each datatable and matrix (an `mlst_table` and an `amrfinder_matrix` included: their
+- the rows, as TSV, of each `DataTable` and `Matrix` (an `MlstTable` and an `AmrfinderMatrix` included: their
   query's rows), and of the last block
-  unless it is a tree: an `input`, `sql`, `query`, `clusters`, `checks` or `calls`. At most 200 rows per
+  unless it is a `Tree`: an `input`, `sql`, `query`, `clusters`, `checks` or `calls`. At most 200 rows per
   block; the rest are counted, not listed.
 
 Each call is self-contained: nothing is remembered between calls. Every call carries the `input` blocks and
@@ -517,7 +520,7 @@ adapter: mlst
 path: data/mlst/mlst.tsv
 ```
 
-```datatable st258
+```DataTable st258
 source: mlst
 filters:
   sequence_type: 258
@@ -530,9 +533,9 @@ The text result:
 
 ```
 blocks:1: input mlst: 12 rows; columns: sample, scheme, sequence_type, calls
-blocks:6: datatable st258: 4 rows; columns: sample, sequence_type
+blocks:6: DataTable st258: 4 rows; columns: sample, sequence_type
 
-datatable st258:
+DataTable st258:
 sample	sequence_type
 KP02	258
 KP05	258

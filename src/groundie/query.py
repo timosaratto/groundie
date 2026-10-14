@@ -78,7 +78,7 @@ FUNCTIONS = "count, min, max, sum, avg, list, distinct"
 
 
 def measure(who, alias, text):
-    """Parse 'fn(column)' into (fn, column), or raise. 'who' names the block in the message: "datatable 'x'"."""
+    """Parse 'fn(column)' into (fn, column), or raise. 'who' names the block in the message: "DataTable 'x'"."""
     m = MEASURE.fullmatch(str(text))
     if not m:
         raise SpecError(f"{who}: measure {alias!r}: expected fn(column) with fn in {FUNCTIONS}")
@@ -97,9 +97,9 @@ def column_list(who, block, key):
     return value
 
 
-def normalize(name, block, component="datatable", taken=()):
+def normalize(name, block, component="DataTable", taken=()):
     """Turn a parsed block into a Query: scalars become lists, values become strings, columns dedupe.
-    'component' is the block's kind (query, datatable, matrix), for messages. 'taken' are keys the caller
+    'component' is the block's kind (query, DataTable, Matrix), for messages. 'taken' are keys the caller
     already took out of the block, such as a matrix's layout: accepted, but not part of the query."""
     who = f"{component} {name!r}"
     unknown = [k for k in block if k not in QUERY_KEYS]

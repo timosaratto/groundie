@@ -4,7 +4,7 @@ from groundie import query as q
 
 
 @pytest.mark.parametrize("block, error", [
-    ({"source": "a", "columns": ["x"], "group_by": ["x"]}, "datatable 't': give 'columns' or 'group_by', not both"),
+    ({"source": "a", "columns": ["x"], "group_by": ["x"]}, "DataTable 't': give 'columns' or 'group_by', not both"),
     ({"source": "a", "group_by": ["x"], "measures": {"n": "count(x"}}, "measure 'n': expected fn(column)"),
     ({"source": "a", "group_by": ["x"], "measures": {"n": "median(y)"}}, "measure 'n': expected fn(column)"),
     ({"source": "a", "group_by": ["x"], "measures": {"n": "max(*)"}}, "measure 'n': expected fn(column)"),
@@ -14,10 +14,10 @@ from groundie import query as q
     ({"source": "a", "group_by": ["x"], "measures": {"n": "count(*)"}, "sort": ["y"]},
      "sort names 'y', not an output column; output columns: x, n"),
     ({"source": "a", "filter": {"x": "1"}, "limit": 3},
-     "datatable 't': unknown key 'filter', 'limit'; accepted: source, columns, filters, group_by, measures, sort"),
-    ({"source": "a", "sort": 3}, "datatable 't': 'sort' must be one column or a list of columns"),
-    ({"source": "a", "columns": {"x": 1}}, "datatable 't': 'columns' must be one column or a list of columns"),
-    ({"source": "a", "group_by": ["x", 1]}, "datatable 't': 'group_by' must be one column or a list of columns"),
+     "DataTable 't': unknown key 'filter', 'limit'; accepted: source, columns, filters, group_by, measures, sort"),
+    ({"source": "a", "sort": 3}, "DataTable 't': 'sort' must be one column or a list of columns"),
+    ({"source": "a", "columns": {"x": 1}}, "DataTable 't': 'columns' must be one column or a list of columns"),
+    ({"source": "a", "group_by": ["x", 1]}, "DataTable 't': 'group_by' must be one column or a list of columns"),
 ])
 def test_normalize_errors(block, error):
     with pytest.raises(ValueError, match=error.replace("(", r"\(").replace(")", r"\)").replace("*", r"\*")):
@@ -58,8 +58,8 @@ def test_lineage_and_about():
         "a": q.Input("a", "tsv", ["x/one.tsv", "y/two.tsv"]),
         "s": q.Sql("s", "select * from a"),
         "b": q.normalize("b", {"source": "a", "filters": {"k": ["1", "2"]}}, "query"),
-        "c": q.normalize("c", {"source": "b", "sort": "k"}, "datatable"),
-        "d": q.normalize("d", {"source": "s"}, "datatable"),
+        "c": q.normalize("c", {"source": "b", "sort": "k"}, "DataTable"),
+        "d": q.normalize("d", {"source": "s"}, "DataTable"),
     }
     assert [b.name for b in q.lineage(blocks, "c")] == ["c", "b", "a"]
     assert [b.name for b in q.lineage(blocks, "d")] == ["d", "s"]  # ad hoc SQL ends the walk
