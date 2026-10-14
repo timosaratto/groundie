@@ -1,4 +1,4 @@
-"""A tree block: one tree of a newick input drawn as a rectangular phylogram in inline SVG, its tips
+"""A Tree block: one tree of a newick input drawn as a rectangular phylogram in inline SVG, its tips
 annotated from another block. Rooted as written, ladderised, fixed row height. Every walk uses an explicit
 stack or a pass over the preorder node list, so tree depth is not limited."""
 
@@ -60,7 +60,7 @@ def render(con, blocks, block):
 def read_tree(con, block):
     """The chosen tree's nodes in preorder as (node, parent, label, branch_length), its file and position,
     and whether the source holds more than one tree. The source is a newick input: checked at parse."""
-    name = f"tree {block.name!r}"
+    name = f"Tree {block.name!r}"
     source = ident(block.source)
     trees = con.execute(f"select file, tree from {source} group by file, tree order by file, tree").fetchall()
     chosen = [t for t in trees if block.file in (None, t[0]) and block.tree in (None, t[1])]
@@ -131,7 +131,7 @@ def layout(nodes):
 def match_tips(con, blocks, block, tips, entry):
     """The rows of the tips block keyed by match value, and the description line. Fills the
     manifest entry's match counts."""
-    name = f"tree {block.name!r}"
+    name = f"Tree {block.name!r}"
     cur = con.execute(f"select * from {ident(block.tips)}")
     columns = [d[0] for d in cur.description]
     missing = [c for c in [block.match, *(block.label or []), block.color] if c is not None and c not in columns]

@@ -32,9 +32,9 @@ def write(tmp_path, text):
 
 
 def rows(path):
-    """The row count of each datatable and matrix, an mlst_table included, from the manifest."""
+    """The row count of each DataTable and Matrix, an MlstTable included, from the manifest."""
     return {b["name"]: b["rows"] for b in cli.build_report(path)[1]["blocks"]
-            if b["kind"] in ("datatable", "matrix", "mlst_table")}
+            if b["kind"] in ("DataTable", "Matrix", "MlstTable")}
 
 
 def details(out, kind, i=0):
@@ -101,34 +101,34 @@ def test_cohort_resistome_matrix():
 
 def test_matrix_layout_names_output_column(tmp_path):
     text = "source: amrfinder\ngroup_by: [sample, element_symbol]\nrows: [sample]\ncols: element_class\n"
-    with pytest.raises(ValueError, match="matrix 'm': 'element_class' not an output column; "
+    with pytest.raises(ValueError, match="Matrix 'm': 'element_class' not an output column; "
                                          "output columns: sample, element_symbol"):
-        build(spec(tmp_path, block("matrix m", text)))
+        build(spec(tmp_path, block("Matrix m", text)))
 
 
 def test_matrix_value_as_text(tmp_path):
     body = block("input mash", f"adapter: mash\npath: {MASH}\n")
     text = "source: mash\nrows: [reference]\ncols: query\nvalue: distance\n"
-    out = build(write(tmp_path, body + block("matrix m", text + "digits: 4\n")))
+    out = build(write(tmp_path, body + block("Matrix m", text + "digits: 4\n")))
     grid = out.split('<table class="matrix">')[1].split("</table>")[0]
     assert re.search(r'<td class="cell num" title="[^"]*">0\.0081</td>', grid)
     assert grid.count('class="cell num"') == 45  # each pair once: one triangle
     assert "cells: distance; blank: no row" in out
-    out = build(write(tmp_path, body + block("matrix m", text)))
+    out = build(write(tmp_path, body + block("Matrix m", text)))
     assert ">0.00814823</td>" in out  # without digits, the value as it is
 
 
 def test_matrix_symmetric(tmp_path):
     body = block("input mash", f"adapter: mash\npath: {MASH}\n")
     text = "source: mash\nrows: [reference]\ncols: query\nvalue: distance\ndigits: 4\nsymmetric: true\n"
-    out = build(write(tmp_path, body + block("matrix m", text)))
+    out = build(write(tmp_path, body + block("Matrix m", text)))
     grid = out.split('<table class="matrix">')[1].split("</table>")[0]
     assert grid.count('class="cell num"') == 90  # both triangles; the diagonal is blank
     heads = re.findall(r'<th class="col"><span>([^<]+)</span>', grid)
     assert len(heads) == 10 and heads == sorted(heads) == re.findall(r"<tr><td>([^<]+)</td>", grid)
     assert "symmetric: true" in out  # under View query
-    with pytest.raises(ValueError, match="matrix 'm': 'symmetric' is true or false, and true needs one"):
-        build(write(tmp_path, body + block("matrix m", text.replace("[reference]", "[reference, p_value]"))))
+    with pytest.raises(ValueError, match="Matrix 'm': 'symmetric' is true or false, and true needs one"):
+        build(write(tmp_path, body + block("Matrix m", text.replace("[reference]", "[reference, p_value]"))))
 
 
 @pytest.mark.parametrize("keys, error", [
@@ -139,8 +139,8 @@ def test_matrix_symmetric(tmp_path):
 def test_matrix_value_keys(tmp_path, keys, error):
     text = ("source: amrfinder\ngroup_by: [sample, element_symbol]\nmeasures:\n  best: max(pct_identity)\n"
             "rows: [sample]\ncols: element_symbol\n")
-    with pytest.raises(ValueError, match=f"matrix 'm': {re.escape(error)}"):
-        build(spec(tmp_path, block("matrix m", text + keys)))
+    with pytest.raises(ValueError, match=f"Matrix 'm': {re.escape(error)}"):
+        build(spec(tmp_path, block("Matrix m", text + keys)))
 
 
 def test_matrix_rows_sharing_a_cell(tmp_path):
@@ -149,41 +149,41 @@ def test_matrix_rows_sharing_a_cell(tmp_path):
     text = ("source: amrfinder\ncolumns: [sample, element_symbol, pct_coverage]\nfilters:\n  element_type: AMR\n"
             "sort: [pct_coverage]\nrows: [element_symbol]\ncols: sample\n")
     head = block("input amrfinder", f"adapter: amrfinder\npath: {amr}\n")
-    out = build(write(tmp_path, head + block("matrix m", text)))
+    out = build(write(tmp_path, head + block("Matrix m", text)))
     assert '<td class="cell" title="2 rows; shown: pct_coverage 50.0">●</td>' in out  # the first
-    out = build(write(tmp_path, head + block("matrix m", text + "value: pct_coverage\nscale: [0, 100]\n")))
+    out = build(write(tmp_path, head + block("Matrix m", text + "value: pct_coverage\nscale: [0, 100]\n")))
     assert 'title="2 rows; shown: pct_coverage 50.0"' in out  # still the first: a value does not pick
-    out = build(write(tmp_path, head + block("matrix m", text + "pick: max(pct_coverage)\n")))
+    out = build(write(tmp_path, head + block("Matrix m", text + "pick: max(pct_coverage)\n")))
     assert 'title="2 rows; shown: pct_coverage 100.0"' in out
-    with pytest.raises(cli.SpecError, match="matrix 'm': 'pick' must be max\\(<column>\\) or min"):
-        build(write(tmp_path, head + block("matrix m", text + "pick: pct_coverage\n")))
+    with pytest.raises(cli.SpecError, match="Matrix 'm': 'pick' must be max\\(<column>\\) or min"):
+        build(write(tmp_path, head + block("Matrix m", text + "pick: pct_coverage\n")))
 
 
 def test_amrfinder_matrix(tmp_path):
     amr = AMRFINDER.with_name("SAMD00654319.tsv")
     head = block("input amrfinder", f"adapter: amrfinder\npaths: [{amr}, {AMRFINDER}]\n")
-    out = build(write(tmp_path, head + block("amrfinder_matrix r", "source: amrfinder\nfilters: {element_type: AMR}\n")))
+    out = build(write(tmp_path, head + block("AmrfinderMatrix r", "source: amrfinder\nfilters: {element_type: AMR}\n")))
     grid = out.split('<table class="matrix">')[1].split("</table>")[0]
     assert grid.startswith("\n<thead>\n<tr><th>element_symbol</th>")  # one type: no element_type column
     # SAMD00654319's two blaI hits: the full-length one is shown, so no ◆
     assert 'title="2 rows; shown: pct_identity 100.0, pct_coverage 100.0">●</td>' in grid
     assert "pick: max(pct_coverage)" in out and "columns: [element_symbol, sample, pct_identity, pct_coverage]" in out
-    out = build(write(tmp_path, head + block("amrfinder_matrix r", "source: amrfinder\n")))  # every type
+    out = build(write(tmp_path, head + block("AmrfinderMatrix r", "source: amrfinder\n")))  # every type
     assert "<tr><th>element_type</th><th>element_symbol</th>" in out and "<tr><td>STRESS</td>" in out
     marked = lambda out: out.split('<table class="matrix">')[1].split("</table>")[0].count("◆")
-    default = marked(build(write(tmp_path, head + block("amrfinder_matrix r", "source: amrfinder\n"))))
-    out = build(write(tmp_path, head + block("amrfinder_matrix r", "source: amrfinder\npartial_below: 0\n")))
+    default = marked(build(write(tmp_path, head + block("AmrfinderMatrix r", "source: amrfinder\n"))))
+    out = build(write(tmp_path, head + block("AmrfinderMatrix r", "source: amrfinder\npartial_below: 0\n")))
     assert default > 0 and marked(out) == 0 and "◆ pct_coverage below 0" in out
 
 
 @pytest.mark.parametrize("body, error", [
-    ("source: amrfinder\nrows: [sample]\n", "amrfinder_matrix 'r': unknown key 'rows'; accepted: source, filters, sort, partial_below"),
-    ("source: amrfinder\npartial_below: high\n", "amrfinder_matrix 'r': 'partial_below' must be a number"),
-    ("source: t\n", "amrfinder_matrix 'r': source 't' is loaded by adapter 'tsv'; an amrfinder_matrix needs an input"),
+    ("source: amrfinder\nrows: [sample]\n", "AmrfinderMatrix 'r': unknown key 'rows'; accepted: source, filters, sort, partial_below"),
+    ("source: amrfinder\npartial_below: high\n", "AmrfinderMatrix 'r': 'partial_below' must be a number"),
+    ("source: t\n", "AmrfinderMatrix 'r': source 't' is loaded by adapter 'tsv'; an AmrfinderMatrix needs an input"),
 ])
 def test_amrfinder_matrix_shape(tmp_path, body, error):
     (tmp_path / "t.tsv").write_text("n\n1\n")
-    text = INPUT + block("input t", "adapter: tsv\npath: t.tsv\n") + block("amrfinder_matrix r", body)
+    text = INPUT + block("input t", "adapter: tsv\npath: t.tsv\n") + block("AmrfinderMatrix r", body)
     with pytest.raises(cli.SpecError, match=re.escape(error)):
         build(write(tmp_path, text))
 
@@ -214,7 +214,7 @@ def first_cells(out):
 
 
 def test_mlst_table(tmp_path):
-    path = mlst_spec(tmp_path, block("mlst_table st", "source: mlst\n"))
+    path = mlst_spec(tmp_path, block("MlstTable st", "source: mlst\n"))
     out = build(path)
     # by size, then by name; no scheme last; rows by sample
     assert captions(out) == ["saureus", "ecoli_achtman_4", "No scheme found"]
@@ -230,16 +230,16 @@ def test_mlst_table(tmp_path):
     assert out.count('<section class="block datatable">') == 1 and out.count("View query") == 1
     assert "Tables by how many genomes they hold" in out
     page, manifest, con = cli.build_report(path)
-    assert manifest["blocks"][1] == {"line": 5, "kind": "mlst_table", "name": "st", "rows": 6, "tables": 3,
+    assert manifest["blocks"][1] == {"line": 5, "kind": "MlstTable", "name": "st", "rows": 6, "tables": 3,
                                      "output_columns": ["sample", "scheme", "sequence_type", "calls"]}
     assert [(t["caption"], t["rows"], len(t["columns"])) for t in manifest["queries"][0]["tables"]] == [
         ("saureus", 3, 9), ("ecoli_achtman_4", 2, 9), ("No scheme found", 1, 2)]
-    assert cli.summary_line("spec.md", manifest["blocks"][1]).startswith("spec.md:5: mlst_table st: 6 rows in 3 tables; ")
+    assert cli.summary_line("spec.md", manifest["blocks"][1]).startswith("spec.md:5: MlstTable st: 6 rows in 3 tables; ")
 
 
 def test_mlst_table_loci_per_scheme(tmp_path):
     lines = [*MLST_ROWS, "B1.fa\tborrelia\t1\t" + "\t".join(f"g{i}(1)" for i in range(1, 9))]  # eight loci
-    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\n"), lines))
+    out = build(mlst_spec(tmp_path, block("MlstTable st", "source: mlst\n"), lines))
     borrelia = out.split("<caption>borrelia</caption>")[1].split("</table>")[0]
     assert borrelia.count("</th>") == 10 and "<th>g8</th>" in borrelia
     saureus = out.split("<caption>saureus</caption>")[1].split("</table>")[0]
@@ -247,13 +247,13 @@ def test_mlst_table_loci_per_scheme(tmp_path):
 
 
 def test_mlst_table_sort_and_filters(tmp_path):
-    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nsort: [sequence_type]\n")))
+    out = build(mlst_spec(tmp_path, block("MlstTable st", "source: mlst\nsort: [sequence_type]\n")))
     assert captions(out) == ["saureus", "ecoli_achtman_4", "No scheme found"]  # first seen, no scheme still last
     assert first_cells(out) == ["S1", "S0", "S2", "E1", "E2", "unknown"]  # by number: 8, 10, 131, 2725, then no ST
     assert "Tables by how many" not in out
-    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nfilters: {scheme: ecoli_achtman_4}\n")))
+    out = build(mlst_spec(tmp_path, block("MlstTable st", "source: mlst\nfilters: {scheme: ecoli_achtman_4}\n")))
     assert captions(out) == ["ecoli_achtman_4"] and first_cells(out) == ["E1", "E2"]
-    out = build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nfilters: {sample: nope}\n")))
+    out = build(mlst_spec(tmp_path, block("MlstTable st", "source: mlst\nfilters: {sample: nope}\n")))
     assert captions(out) == [] and '<td class="empty" colspan="4">No rows</td>' in out
 
 
@@ -265,7 +265,7 @@ def test_mlst_table_sort_and_filters(tmp_path):
     ("{sequence_type: None}", None),  # the text 'None', not a null
 ])
 def test_filter_null(tmp_path, filters, samples):
-    body = block("datatable t", f"source: mlst\nfilters: {filters}\nsort: [sample]\n")
+    body = block("DataTable t", f"source: mlst\nfilters: {filters}\nsort: [sample]\n")
     if samples is None:
         with pytest.raises(cli.SpecError):
             build(mlst_spec(tmp_path, body))
@@ -283,7 +283,7 @@ def test_filter_null_text():
 
 def test_mlst_table_as_source(tmp_path):
     # a later block reads the query's rows, raw, not the split tables
-    body = block("mlst_table st", "source: mlst\n") + block("datatable t", "source: st\nfilters: {sample: S1}\n")
+    body = block("MlstTable st", "source: mlst\n") + block("DataTable t", "source: st\nfilters: {sample: S1}\n")
     page, manifest, con = cli.build_report(mlst_spec(tmp_path, body))
     assert con.execute("select * from t").fetchall() == [
         ("S1", "saureus", 8, [{"locus": locus, "call": call} for locus, call in zip(
@@ -291,20 +291,20 @@ def test_mlst_table_as_source(tmp_path):
 
 
 @pytest.mark.parametrize("body, error", [
-    ("source: mlst\ncolumns: [sample]\n", "mlst_table 'st': unknown key 'columns'; accepted: source, filters, sort"),
-    ("source: t\n", "mlst_table 'st': source 't' is loaded by adapter 'tsv'; an mlst_table needs an input loaded by the mlst adapter"),
-    ("source: q\n", "mlst_table 'st': source 'q' is a query block; an mlst_table needs an input"),
+    ("source: mlst\ncolumns: [sample]\n", "MlstTable 'st': unknown key 'columns'; accepted: source, filters, sort"),
+    ("source: t\n", "MlstTable 'st': source 't' is loaded by adapter 'tsv'; an MlstTable needs an input loaded by the mlst adapter"),
+    ("source: q\n", "MlstTable 'st': source 'q' is a query block; an MlstTable needs an input"),
 ])
 def test_mlst_table_shape(tmp_path, body, error):
     (tmp_path / "t.tsv").write_text("n\n1\n")
     head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
     with pytest.raises(cli.SpecError, match=re.escape(error)):
-        build(mlst_spec(tmp_path, head + block("mlst_table st", body)))
+        build(mlst_spec(tmp_path, head + block("MlstTable st", body)))
 
 
 def test_datatable_display(tmp_path):
     body = "source: mlst\ncolumns: [sample, sequence_type]\nsort: [sample]\ndisplay:\n  sequence_type: ST\n"
-    path = mlst_spec(tmp_path, block("datatable st", body))
+    path = mlst_spec(tmp_path, block("DataTable st", body))
     out = build(path)
     assert '<tr><th>sample</th><th class="num" title="sequence_type">ST</th></tr>' in out
     assert details(out, "datatable").startswith(
@@ -317,29 +317,29 @@ def test_datatable_display(tmp_path):
 
 def test_datatable_display_every_column(tmp_path):
     # without 'columns', display may name any column of the source
-    out = build(mlst_spec(tmp_path, block("datatable st", "source: mlst\ndisplay: {scheme: Scheme}\n")))
+    out = build(mlst_spec(tmp_path, block("DataTable st", "source: mlst\ndisplay: {scheme: Scheme}\n")))
     assert '<th title="scheme">Scheme</th>' in out
 
 
 @pytest.mark.parametrize("body, error", [
     ("columns: [sample, sequence_type]\ndisplay: {st: ST}\n",
-     "spec.md:5: datatable 'st': display names 'st', not an output column; output columns: sample, sequence_type"),
+     "spec.md:5: DataTable 'st': display names 'st', not an output column; output columns: sample, sequence_type"),
     ("display: {st: ST}\n", "display names 'st', not an output column; output columns: sample, scheme, sequence_type, calls"),
-    ("display: {sequence_type: 7}\n", "datatable 'st': display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: 7}\n", "DataTable 'st': display 'sequence_type' must be text, the column's title"),
     ("display: {sequence_type: {title: ST}}\n", "display 'sequence_type' must be text, the column's title"),
     ("display: {sequence_type: ''}\n", "display 'sequence_type' must be text, the column's title"),
-    ("display: [sequence_type]\n", "datatable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
+    ("display: [sequence_type]\n", "DataTable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
                                    "or names an input whose adapter's titles it shows"),
 ])
 def test_datatable_display_shape(tmp_path, body, error):
     with pytest.raises(cli.SpecError, match=re.escape(error)):
-        build(mlst_spec(tmp_path, block("datatable st", "source: mlst\n" + body)))
+        build(mlst_spec(tmp_path, block("DataTable st", "source: mlst\n" + body)))
 
 
 def test_datatable_display_from_input(tmp_path):
     # the adapter's titles, by column name, through a sql block; a column it has no title for keeps its name
     body = (block("sql n", "select sample, sequence_type, 1 as one from mlst order by sample\n")
-            + block("datatable st", "source: n\ndisplay: mlst\n"))
+            + block("DataTable st", "source: n\ndisplay: mlst\n"))
     path = mlst_spec(tmp_path, body)
     out = build(path)
     assert ('<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th>'
@@ -351,22 +351,22 @@ def test_datatable_display_from_input(tmp_path):
 
 
 @pytest.mark.parametrize("display, error", [
-    ("nope", "spec.md:12: datatable 'st': display 'nope' names no block; inputs: mlst, t"),
-    ("q", "datatable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
-    ("t", "datatable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
+    ("nope", "spec.md:12: DataTable 'st': display 'nope' names no block; inputs: mlst, t"),
+    ("q", "DataTable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
+    ("t", "DataTable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
           "adapters with titles: mlst"),
 ])
 def test_datatable_display_from_input_shape(tmp_path, display, error):
     (tmp_path / "t.tsv").write_text("n\n1\n")
     head = block("input t", "adapter: tsv\npath: t.tsv\n") + block("query q", "source: mlst\n")
     with pytest.raises(cli.SpecError, match=re.escape(error)):
-        build(mlst_spec(tmp_path, head + block("datatable st", f"source: mlst\ndisplay: {display}\n")))
+        build(mlst_spec(tmp_path, head + block("DataTable st", f"source: mlst\ndisplay: {display}\n")))
 
 
 @pytest.mark.parametrize("fence, body", [
     ("query q", "source: mlst\n"),
-    ("matrix q", "source: mlst\nrows: sample\ncols: scheme\n"),
-    ("mlst_table q", "source: mlst\n"),
+    ("Matrix q", "source: mlst\nrows: sample\ncols: scheme\n"),
+    ("MlstTable q", "source: mlst\n"),
 ])
 def test_display_only_on_datatable(tmp_path, fence, body):
     with pytest.raises(cli.SpecError, match="unknown key 'display'"):
@@ -376,16 +376,16 @@ def test_display_only_on_datatable(tmp_path, fence, body):
 def test_mlst_table_loci_disagree(tmp_path):
     lines = [MLST_ROWS[1], MLST_ROWS[4].replace("tpi(4)", "tpx(4)")]
     with pytest.raises(cli.SpecError, match=re.escape(
-            "mlst_table 'st': scheme 'saureus': genomes call different loci: arcC, aroE, glpF, gmk, pta, tpx, yqiL "
+            "MlstTable 'st': scheme 'saureus': genomes call different loci: arcC, aroE, glpF, gmk, pta, tpx, yqiL "
             "in S0; arcC, aroE, glpF, gmk, pta, tpi, yqiL in S1")):
-        build(mlst_spec(tmp_path, block("mlst_table st", "source: mlst\nsort: [sample]\n"), lines))
+        build(mlst_spec(tmp_path, block("MlstTable st", "source: mlst\nsort: [sample]\n"), lines))
 
 
 def test_matrix_default_order(tmp_path):
     amr = AMRFINDER.with_name("SAMD00654319.tsv")
     head = (block("input amrfinder", f"adapter: amrfinder\npaths: [{amr}, {AMRFINDER}]\n")
             + block("sql hits", "select * from amrfinder where element_type = 'AMR' order by element_symbol desc\n"))
-    out = build(write(tmp_path, head + block("matrix m", "source: hits\nrows: [element_symbol]\ncols: sample\n")))
+    out = build(write(tmp_path, head + block("Matrix m", "source: hits\nrows: [element_symbol]\ncols: sample\n")))
     grid = out.split('<table class="matrix">')[1].split("</table>")[0]
     cols = re.findall(r'<th class="col"><span>(\w+)', grid)
     rows = re.findall(r"<tr><td>([^<]+)</td>", grid)
@@ -394,7 +394,7 @@ def test_matrix_default_order(tmp_path):
     assert rows[:len(both)] == sorted(both) and len(both) < len(rows)  # in both genomes first, then by name
     assert rows[len(both):] == sorted(rows[len(both):])
     assert "Rows by how many cells they fill, most first" in out
-    out = build(write(tmp_path, head + block("matrix m", "source: hits\nsort: [element_symbol]\n"
+    out = build(write(tmp_path, head + block("Matrix m", "source: hits\nsort: [element_symbol]\n"
                                                           "rows: [element_symbol]\ncols: sample\n")))
     grid = out.split('<table class="matrix">')[1].split("</table>")[0]
     assert re.findall(r"<tr><td>([^<]+)</td>", grid) == sorted(rows)  # the query's order
@@ -403,14 +403,20 @@ def test_matrix_default_order(tmp_path):
 
 def test_matrix_without_value(tmp_path):
     text = "source: amrfinder\ngroup_by: [element_type, sample]\nsort: [element_type]\nrows: [element_type]\ncols: sample\n"
-    out = build(spec(tmp_path, block("matrix m", text)))
+    out = build(spec(tmp_path, block("Matrix m", text)))
     assert '<td class="cell" title="">●</td>' in out
 
 
 def test_unknown_block(tmp_path):
-    with pytest.raises(ValueError, match="unknown block 'chart'.*known: input, sql, query, clusters, checks, calls, datatable, matrix, amrfinder_matrix, "
-                                         "mlst_table, tree"):
+    with pytest.raises(ValueError, match="unknown block 'chart'.*known: input, sql, query, clusters, checks, calls, DataTable, Matrix, "
+                                         "AmrfinderMatrix, MlstTable, Tree"):
         build(spec(tmp_path, block("chart c", "source: amrfinder\n")))
+
+
+@pytest.mark.parametrize("old, new", [("datatable", "DataTable"), ("mlst_table", "MlstTable"), ("tree", "Tree")])
+def test_lowercase_display_block(tmp_path, old, new):
+    with pytest.raises(ValueError, match=f"unknown block '{old}' \\({old} x\\); did you mean {new}\\? known: "):
+        build(spec(tmp_path, block(f"{old} x", "source: amrfinder\n")))
 
 
 @pytest.mark.parametrize("fence", ["table t", "data t"])
@@ -421,7 +427,7 @@ def test_old_block_kinds(tmp_path, fence):
 
 def test_tsv_over_amrfinder(tmp_path):
     body = (block("input amr", f"adapter: tsv\npath: {AMRFINDER}\noptions: {{null: NA}}\n")
-            + block("datatable hits", "source: amr\nfilters:\n  Type: AMR\ncolumns: [file, Element symbol, Class]\n"))
+            + block("DataTable hits", "source: amr\nfilters:\n  Type: AMR\ncolumns: [file, Element symbol, Class]\n"))
     path = write(tmp_path, body)
     out = build(path)
     assert rows(path) == {"hits": 13}
@@ -434,7 +440,7 @@ def test_tsv_over_amrfinder(tmp_path):
 def test_tsv_paths(tmp_path):
     second = AMRFINDER.with_name("SAMD00654276.tsv")
     body = (block("input amr", f"adapter: tsv\npaths: [{AMRFINDER}, {second}]\n")
-            + block("datatable files", "source: amr\ncolumns: [file, Name]\nsort: [file]\n"))
+            + block("DataTable files", "source: amr\ncolumns: [file, Name]\nsort: [file]\n"))
     out = build(write(tmp_path, body))
     assert "<tr><td>SAMD00654274.tsv</td><td>SAMD00654274</td></tr>" in out
     assert "<tr><td>SAMD00654276.tsv</td><td>SAMD00654276</td></tr>" in out
@@ -443,7 +449,7 @@ def test_tsv_paths(tmp_path):
 
 def test_csv(tmp_path):
     (tmp_path / "t.csv").write_text("gene,drug class\nmecA,beta-lactam\nblaZ,beta-lactam\nnorA,efflux\n")
-    body = block("input t", "adapter: csv\npath: t.csv\n") + block("datatable x", "source: t\nfilters:\n  gene: norA\n")
+    body = block("input t", "adapter: csv\npath: t.csv\n") + block("DataTable x", "source: t\nfilters:\n  gene: norA\n")
     path = write(tmp_path, body)
     assert "<tr><td>t.csv</td><td>norA</td><td>efflux</td></tr>" in build(path)
     assert rows(path) == {"x": 1}
@@ -453,7 +459,7 @@ def test_csv(tmp_path):
                                   '[{"gene": "mecA", "n": 1}, {"gene": "norA", "n": 2}]'])
 def test_json(tmp_path, text):
     (tmp_path / "t.json").write_text(text)
-    body = block("input t", "adapter: json\npath: t.json\n") + block("datatable x", "source: t\nsort: [gene]\n")
+    body = block("input t", "adapter: json\npath: t.json\n") + block("DataTable x", "source: t\nsort: [gene]\n")
     out = build(write(tmp_path, body))
     assert '<tr><td>t.json</td><td>mecA</td><td class="num">1</td></tr>' in out
     assert '<tr><td>t.json</td><td>norA</td><td class="num">2</td></tr>' in out
@@ -505,7 +511,7 @@ def test_input_glob(tmp_path):
     (tmp_path / "sub").mkdir()
     for name in ("b.tsv", "a.tsv", "c.csv"):
         (tmp_path / "sub" / name).write_text("n\n1\n")
-    text = block("input t", "adapter: tsv\npaths: ['sub/*.tsv', sub/a.tsv]\n") + block("datatable d", "source: t\n")
+    text = block("input t", "adapter: tsv\npaths: ['sub/*.tsv', sub/a.tsv]\n") + block("DataTable d", "source: t\n")
     page, manifest, _ = cli.build_report(write(tmp_path, text))
     files = manifest["inputs"]["t"]["files"]
     assert [f["path"] for f in files] == ["sub/a.tsv", "sub/b.tsv"]  # name order, each file once
@@ -520,7 +526,7 @@ def test_input_paths_resolve_against_file(tmp_path):
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "a.tsv").write_text("n\n1\n")
     path = tmp_path / "sub" / "spec.md"
-    path.write_text(block("input a", "adapter: tsv\npath: a.tsv\n") + block("datatable t", "source: a\n"))
+    path.write_text(block("input a", "adapter: tsv\npath: a.tsv\n") + block("DataTable t", "source: a\n"))
     manifest = cli.build_report(path)[1]
     [f] = manifest["inputs"]["a"]["files"]
     assert f["path"] == "a.tsv" and f["resolved_path"] == str((tmp_path / "sub" / "a.tsv").resolve())
@@ -528,7 +534,7 @@ def test_input_paths_resolve_against_file(tmp_path):
 
 def test_inline_blocks_and_base_dir(tmp_path):
     (tmp_path / "a.tsv").write_text("n\n1\n2\n")
-    text = block("input a", "adapter: tsv\npath: a.tsv\n") + block("datatable t", "source: a\n")
+    text = block("input a", "adapter: tsv\npath: a.tsv\n") + block("DataTable t", "source: a\n")
     fragment, manifest, _ = cli.build_report("blocks", text, tmp_path)
     assert manifest["file"]["path"] == "blocks" and manifest["blocks"][1]["rows"] == 2
     assert '<section class="block datatable">' in fragment
@@ -540,17 +546,17 @@ def test_inline_blocks_and_base_dir(tmp_path):
 
 
 def test_input_below_its_reader(tmp_path):
-    body = (block("datatable t", "source: late\ncolumns: [element_symbol]\nfilters:\n  element_type: STRESS\n")
+    body = (block("DataTable t", "source: late\ncolumns: [element_symbol]\nfilters:\n  element_type: STRESS\n")
             + block("input late", f"adapter: amrfinder\npath: {AMRFINDER}\n"))
     page, manifest, _ = cli.build_report(write(tmp_path, body))
-    assert [(b["kind"], b["name"], b["rows"]) for b in manifest["blocks"]] == [("datatable", "t", 2),
+    assert [(b["kind"], b["name"], b["rows"]) for b in manifest["blocks"]] == [("DataTable", "t", 2),
                                                                               ("input", "late", 34)]
     assert "<p>From late:</p>\n<pre>adapter: amrfinder\n" in page
 
 
 def test_sql_consumed_with_filter(tmp_path):
     sql = "select element_type, count(*) as n from amrfinder group by element_type\n"
-    body = block("sql counts", sql) + block("datatable t", "source: counts\nfilters:\n  element_type: AMR\n")
+    body = block("sql counts", sql) + block("DataTable t", "source: counts\nfilters:\n  element_type: AMR\n")
     out = build(spec(tmp_path, body))
     assert '<tr><td>AMR</td><td class="num">13</td></tr>' in out
     assert "<p>From counts (ad hoc SQL):</p>\n<pre>select element_type, count(*) as n" in out
@@ -560,7 +566,7 @@ def test_sql_consumed_with_filter(tmp_path):
 def test_sql_reads_query(tmp_path):
     body = (block("query hits", "source: amrfinder\nfilters:\n  element_type: STRESS\n")
             + block("sql symbols", "select element_symbol from hits order by element_symbol\n")
-            + block("datatable t", "source: symbols\n"))
+            + block("DataTable t", "source: symbols\n"))
     path = spec(tmp_path, body)
     out = build(path)
     assert rows(path) == {"t": 2}
@@ -569,10 +575,10 @@ def test_sql_reads_query(tmp_path):
 
 def test_chain_lineage(tmp_path):
     body = (block("query hits", "source: amrfinder\nfilters:\n  element_type: [AMR, STRESS]\n")
-            + block("datatable amr", "source: hits\nfilters:\n  element_type: AMR\n"
+            + block("DataTable amr", "source: hits\nfilters:\n  element_type: AMR\n"
                     "columns: [element_type, element_symbol, element_class]\n")
             + block("query classes", "source: amr\ngroup_by: element_class\nmeasures:\n  n: count(*)\n")
-            + block("datatable top", "source: classes\nsort: [n, element_class]\n"))
+            + block("DataTable top", "source: classes\nsort: [n, element_class]\n"))
     path = spec(tmp_path, body)
     query = details(build(path), "datatable", 1)
     assert query.startswith("\n<pre>source: classes\nsort: [n, element_class]\n</pre>\n")
@@ -584,7 +590,7 @@ def test_chain_lineage(tmp_path):
 def test_sql_ancestor_in_lineage(tmp_path):
     body = (block("sql amr", "select * from amrfinder where element_type = 'AMR'\n")
             + block("query genes", "source: amr\ncolumns: [element_symbol]\n")
-            + block("datatable t", "source: genes\nsort: element_symbol\n"))
+            + block("DataTable t", "source: genes\nsort: element_symbol\n"))
     out = build(spec(tmp_path, body))
     assert re.findall(r"<p>From (\w+)", details(out, "datatable")) == ["genes", "amr"]
     assert "<p>From amr (ad hoc SQL):</p>\n<pre>select * from amrfinder where element_type = &#x27;AMR&#x27;</pre>" in out
@@ -594,7 +600,7 @@ def test_sql_ancestor_in_lineage(tmp_path):
 def test_matrix_as_source(tmp_path):
     grid = ("source: amrfinder\ngroup_by: [element_type, sample]\nmeasures:\n  n: count(*)\n"
             "rows: element_type\ncols: sample\n")
-    body = block("matrix m", grid) + block("datatable t", "source: m\nfilters:\n  element_type: STRESS\n")
+    body = block("Matrix m", grid) + block("DataTable t", "source: m\nfilters:\n  element_type: STRESS\n")
     path = spec(tmp_path, body)
     out = build(path)
     assert '<tr><td>STRESS</td><td>SAMD00654274</td><td class="num">2</td></tr>' in out
@@ -603,23 +609,23 @@ def test_matrix_as_source(tmp_path):
 
 
 def test_tree_is_not_a_source(tmp_path):
-    body = block("input t", "adapter: newick\npath: t.nwk\n") + block("tree p", "source: t\n")
+    body = block("input t", "adapter: newick\npath: t.nwk\n") + block("Tree p", "source: t\n")
     (tmp_path / "t.nwk").write_text("(A,B);")
-    with pytest.raises(cli.SpecError, match="^spec.md:8: datatable 'x': source 'p' is a tree block, which no block can read$"):
-        build(write(tmp_path, body + block("datatable x", "source: p\n")))
-    with pytest.raises(cli.SpecError, match="^spec.md:8: tree 'q': tips 'p' is a tree block"):
-        build(write(tmp_path, body + block("tree q", "source: t\ntips: p\nmatch: label\n")))
+    with pytest.raises(cli.SpecError, match="^spec.md:8: DataTable 'x': source 'p' is a Tree block, which no block can read$"):
+        build(write(tmp_path, body + block("DataTable x", "source: p\n")))
+    with pytest.raises(cli.SpecError, match="^spec.md:8: Tree 'q': tips 'p' is a Tree block"):
+        build(write(tmp_path, body + block("Tree q", "source: t\ntips: p\nmatch: label\n")))
 
 
 
 @pytest.mark.parametrize("second, error", [
-    (block("datatable amrfinder", "source: amrfinder\n"), "datatable 'amrfinder': the name 'amrfinder' is taken by the "
+    (block("DataTable amrfinder", "source: amrfinder\n"), "DataTable 'amrfinder': the name 'amrfinder' is taken by the "
                                                            "block on line 1"),
     (block("input hits", f"adapter: amrfinder\npath: {AMRFINDER}\n"), "input 'hits': the name 'hits' is taken by "
                                                                        "the block on line 6"),
-    (block("tree hits", "source: amrfinder\n"), "tree 'hits': the name 'hits' is taken by the block on line 6"),
+    (block("Tree hits", "source: amrfinder\n"), "Tree 'hits': the name 'hits' is taken by the block on line 6"),
     (block("sql hits", "select 1\n"), "sql 'hits': the name 'hits' is taken"),
-    (block("matrix hits", "source: amrfinder\nrows: sample\ncols: sample\n"), "matrix 'hits': the name 'hits' is taken"),
+    (block("Matrix hits", "source: amrfinder\nrows: sample\ncols: sample\n"), "Matrix 'hits': the name 'hits' is taken"),
 ])
 def test_unique_names(tmp_path, second, error):
     body = block("query hits", "source: amrfinder\n") + second
@@ -629,20 +635,20 @@ def test_unique_names(tmp_path, second, error):
 
 def test_tree_name_is_taken(tmp_path):
     (tmp_path / "t.nwk").write_text("(A,B);")
-    body = (block("input t", "adapter: newick\npath: t.nwk\n") + block("tree p", "source: t\n")
-            + block("datatable p", "source: t\n"))
-    with pytest.raises(cli.SpecError, match="^spec.md:8: datatable 'p': the name 'p' is taken by the block on line 5$"):
+    body = (block("input t", "adapter: newick\npath: t.nwk\n") + block("Tree p", "source: t\n")
+            + block("DataTable p", "source: t\n"))
+    with pytest.raises(cli.SpecError, match="^spec.md:8: DataTable 'p': the name 'p' is taken by the block on line 5$"):
         build(write(tmp_path, body))
 
 
 def test_source_names_no_block(tmp_path):
-    body = (block("datatable t", "source: later\n") + block("query later", "source: amrfinder\n"))
-    with pytest.raises(cli.SpecError, match="^spec.md:6: datatable 't': source 'later' is not above this block; "
+    body = (block("DataTable t", "source: later\n") + block("query later", "source: amrfinder\n"))
+    with pytest.raises(cli.SpecError, match="^spec.md:6: DataTable 't': source 'later' is not above this block; "
                                             "a block reads inputs and the blocks above it$"):
         build(spec(tmp_path, body))
-    with pytest.raises(cli.SpecError, match="^spec.md:6: datatable 't': source 'nope' names no block; "
+    with pytest.raises(cli.SpecError, match="^spec.md:6: DataTable 't': source 'nope' names no block; "
                                             "readable here: amrfinder$"):
-        build(spec(tmp_path, block("datatable t", "source: nope\n")))
+        build(spec(tmp_path, block("DataTable t", "source: nope\n")))
 
 
 @pytest.mark.parametrize("sql, found", [
@@ -701,7 +707,7 @@ def tree_spec(tmp_path, nwk, body):
 def test_tree_without_tips(tmp_path, monkeypatch):
     manifests = []
     monkeypatch.setattr(cli, "render_provenance", lambda m: manifests.append(m) or "")
-    out = build(tree_spec(tmp_path, "((A:1,B:2):1,C:1);\n", block("tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "((A:1,B:2):1,C:1);\n", block("Tree p", "source: t\n")))
     assert "<p>Tree from source t: 3 tips; rooted as written; branch lengths as given<br>Labelled by tip label</p>" in out
     assert "<title>C</title>" in out and "<title>A</title>" in out
     assert '<p class="legend">' not in out
@@ -711,7 +717,7 @@ def test_tree_without_tips(tmp_path, monkeypatch):
 
 
 def test_tree_sql_reaches_tips(tmp_path):
-    body = block("sql tips", "select label from t where is_tip order by label\n") + block("datatable x", "source: tips\n")
+    body = block("sql tips", "select label from t where is_tip order by label\n") + block("DataTable x", "source: tips\n")
     out = build(tree_spec(tmp_path, "((A,B),C);", body))
     assert "<tr><td>A</td></tr>\n<tr><td>B</td></tr>\n<tr><td>C</td></tr>" in out
 
@@ -720,7 +726,7 @@ def test_tree_mismatches(tmp_path, monkeypatch):
     manifests = []
     monkeypatch.setattr(cli, "render_provenance", lambda m: manifests.append(m) or "")
     sql = "select * from (values ('A', 'x'), ('B', 'y'), ('B', 'z'), ('Q', 'x')) v(sample, st)\n"
-    body = block("sql meta", sql) + block("tree p", "source: t\ntips: meta\nmatch: sample\nlabel: st\ncolor: st\n")
+    body = block("sql meta", sql) + block("Tree p", "source: t\ntips: meta\nmatch: sample\nlabel: st\ncolor: st\n")
     out = build(tree_spec(tmp_path, "((A:1,B:1):1,C:2);", body))
     assert ("Tips from meta: ad hoc SQL; matched on sample; 2 of 3 tips matched; tips with no row: C; "
             "rows with no tip: Q; match values on more than one row, first row used: B<br>") in out
@@ -732,7 +738,7 @@ def test_tree_mismatches(tmp_path, monkeypatch):
 
 def test_tree_tips_from_input(tmp_path):
     (tmp_path / "meta.csv").write_text("sample,st\nA,8\nB,5\n")
-    body = (block("tree p", "source: t\ntips: meta\nmatch: sample\ncolor: st\n")
+    body = (block("Tree p", "source: t\ntips: meta\nmatch: sample\ncolor: st\n")
             + block("input meta", "adapter: csv\npath: meta.csv\n"))
     out = build(tree_spec(tmp_path, "((A:1,B:1):1,C:2);", body))
     assert "Tips from meta: adapter csv, file meta.csv; matched on sample; 2 of 3 tips matched; tips with no row: C<br>" in out
@@ -746,38 +752,38 @@ def test_tree_tips_lineage(tmp_path):
     (tmp_path / "meta.csv").write_text("sample,st\nA,8\nB,5\n")
     body = (block("input meta", "adapter: csv\npath: meta.csv\n")
             + block("query st8", "source: meta\nfilters:\n  st: 8\n")
-            + block("tree p", "source: t\ntips: st8\nmatch: sample\nlabel: [sample, st]\n"))
+            + block("Tree p", "source: t\ntips: st8\nmatch: sample\nlabel: [sample, st]\n"))
     out = build(tree_spec(tmp_path, "(A,B);", body))
     assert "Tips from st8: filters st = 8; matched on sample; 1 of 2 tips matched" in out
     assert re.findall(r"<p>From (\w+)", details(out, "tree")) == ["t", "st8", "meta"]
 
 
 def test_tree_cladogram_and_notes(tmp_path):
-    out = build(tree_spec(tmp_path, "((A,B),(C,A));", block("tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "((A,B),(C,A));", block("Tree p", "source: t\n")))
     assert ("Tree from source t: 4 tips; rooted as written; no branch lengths, drawn as a cladogram with tips "
             "aligned; 1 tip label on more than one tip<br>") in out
     assert '<text class="scale"' not in out
-    out = build(tree_spec(tmp_path, "((A:-1,B:1):1,C);", block("tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "((A:-1,B:1):1,C);", block("Tree p", "source: t\n")))
     assert "branch lengths as given; 1 negative length drawn as zero; 1 missing length drawn as zero<br>" in out
 
 
 def test_tree_several_trees(tmp_path):
-    with pytest.raises(ValueError, match=r"tree 'p': source 't' holds 2 trees \(t.nwk tree 1, t.nwk tree 2\); "
+    with pytest.raises(ValueError, match=r"Tree 'p': source 't' holds 2 trees \(t.nwk tree 1, t.nwk tree 2\); "
                                          r"pick one with 'tree'"):
-        build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("tree p", "source: t\n")))
-    out = build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("tree p", "source: t\ntree: 2\n")))
+        build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("Tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("Tree p", "source: t\ntree: 2\n")))
     assert "Tree from source t (t.nwk, tree 2): 2 tips" in out and "<title>D</title>" in out
     with pytest.raises(ValueError, match="holds 2 trees .*; 0 match tree 3; pick one"):
-        build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("tree p", "source: t\ntree: 3\n")))
+        build(tree_spec(tmp_path, "(A,B);\n(C,D);\n", block("Tree p", "source: t\ntree: 3\n")))
 
 
 def test_tree_needs_newick_source(tmp_path):
-    with pytest.raises(ValueError, match="^spec.md:6: tree 'p': source 'amrfinder' is loaded by adapter 'amrfinder'; "
-                                         "a tree block needs an input loaded by the newick adapter$"):
-        build(spec(tmp_path, block("tree p", "source: amrfinder\n")))
-    body = block("sql s", "select * from t\n") + block("tree p", "source: s\n")
-    with pytest.raises(ValueError, match="^spec.md:8: tree 'p': source 's' is a sql block; "
-                                         "a tree block needs an input loaded by the newick adapter$"):
+    with pytest.raises(ValueError, match="^spec.md:6: Tree 'p': source 'amrfinder' is loaded by adapter 'amrfinder'; "
+                                         "a Tree block needs an input loaded by the newick adapter$"):
+        build(spec(tmp_path, block("Tree p", "source: amrfinder\n")))
+    body = block("sql s", "select * from t\n") + block("Tree p", "source: s\n")
+    with pytest.raises(ValueError, match="^spec.md:8: Tree 'p': source 's' is a sql block; "
+                                         "a Tree block needs an input loaded by the newick adapter$"):
         build(tree_spec(tmp_path, "(A,B);", body))
 
 
@@ -789,13 +795,13 @@ def test_tree_needs_newick_source(tmp_path):
     ("source: t\ntree: 0\n", "'tree' must be a whole number from 1"),
 ])
 def test_tree_block_shape(tmp_path, text, error):
-    with pytest.raises(ValueError, match=f"tree 'p': .*{re.escape(error)}"):
-        build(tree_spec(tmp_path, "(A,B);", block("tree p", text)))
+    with pytest.raises(ValueError, match=f"Tree 'p': .*{re.escape(error)}"):
+        build(tree_spec(tmp_path, "(A,B);", block("Tree p", text)))
 
 
 def test_tree_column_not_in_tips(tmp_path):
-    body = block("sql meta", "select 'A' as sample\n") + block("tree p", "source: t\ntips: meta\nmatch: sample\ncolor: st\n")
-    with pytest.raises(ValueError, match="tree 'p': 'st' not a column of meta; columns: sample"):
+    body = block("sql meta", "select 'A' as sample\n") + block("Tree p", "source: t\ntips: meta\nmatch: sample\ncolor: st\n")
+    with pytest.raises(ValueError, match="Tree 'p': 'st' not a column of meta; columns: sample"):
         build(tree_spec(tmp_path, "(A,B);", body))
 
 
@@ -805,68 +811,68 @@ def test_tree_parse_error_names_source(tmp_path):
 
 
 def test_tree_label_escaped(tmp_path):
-    out = build(tree_spec(tmp_path, "('<b>x</b>&',B);", block("tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "('<b>x</b>&',B);", block("Tree p", "source: t\n")))
     assert "<b>x</b>" not in out
     assert "&lt;b&gt;x&lt;/b&gt;&amp;" in out
 
 
 def test_tree_deep(tmp_path):
     depth = 3000
-    out = build(tree_spec(tmp_path, "(" * depth + "A:1" + ",B:1):1" * depth + ";", block("tree p", "source: t\n")))
+    out = build(tree_spec(tmp_path, "(" * depth + "A:1" + ",B:1):1" * depth + ";", block("Tree p", "source: t\n")))
     assert f"Tree from source t: {depth + 1} tips" in out
 
 
 def test_error_names_spec_line(tmp_path):
-    body = "prose\n\n" + block("datatable ok", "source: amrfinder\n") + block("matrix m", "source: amrfinder\n")
-    with pytest.raises(ValueError, match=r"^spec.md:11: matrix 'm': needs 'rows'"):  # parse time
+    body = "prose\n\n" + block("DataTable ok", "source: amrfinder\n") + block("Matrix m", "source: amrfinder\n")
+    with pytest.raises(ValueError, match=r"^spec.md:11: Matrix 'm': needs 'rows'"):  # parse time
         build(spec(tmp_path, body))
-    body = "prose\n\n" + block("datatable ok", "source: amrfinder\n") + block("query d", "source: nope\n")
+    body = "prose\n\n" + block("DataTable ok", "source: amrfinder\n") + block("query d", "source: nope\n")
     with pytest.raises(ValueError, match=r"^spec.md:11: query 'd': source 'nope' names no block"):  # parse time
         build(spec(tmp_path, body))
-    body = "prose\n\n" + block("datatable ok", "source: amrfinder\n") + block("query d", "source: ok\nsort: nope\n")
+    body = "prose\n\n" + block("DataTable ok", "source: amrfinder\n") + block("query d", "source: ok\nsort: nope\n")
     with pytest.raises(ValueError, match=r"^spec.md:11: query 'd': Binder Error"):  # build time
         build(spec(tmp_path, body))
 
 
 def test_block_kind_in_messages(tmp_path):
     text = "source: amrfinder\ncolumns: [sample]\ngroup_by: [sample]\nrows: sample\ncols: sample\n"
-    with pytest.raises(ValueError, match="matrix 'm': give 'columns' or 'group_by', not both"):
-        build(spec(tmp_path, block("matrix m", text)))
+    with pytest.raises(ValueError, match="Matrix 'm': give 'columns' or 'group_by', not both"):
+        build(spec(tmp_path, block("Matrix m", text)))
     with pytest.raises(ValueError, match="query 'hits': needs 'source'"):
         build(spec(tmp_path, block("query hits", "columns: [sample]\n")))
 
 
 def test_unknown_query_key(tmp_path):
-    with pytest.raises(ValueError, match=r"^spec.md:6: datatable 't': unknown key 'filter'; accepted: source, "
+    with pytest.raises(ValueError, match=r"^spec.md:6: DataTable 't': unknown key 'filter'; accepted: source, "
                                          "columns, filters, group_by, measures, sort, display$"):
-        build(spec(tmp_path, block("datatable t", "source: amrfinder\nfilter:\n  sample: x\n")))
+        build(spec(tmp_path, block("DataTable t", "source: amrfinder\nfilter:\n  sample: x\n")))
     with pytest.raises(ValueError, match=r"^spec.md:6: query 't': unknown key 'result'; accepted: source, "):
         build(spec(tmp_path, block("query t", "result: amrfinder\n")))
     text = "source: amrfinder\ngroup_by: [sample, element_symbol]\nrows: sample\ncols: element_symbol\nlimit: 3\n"
-    with pytest.raises(ValueError, match=r"matrix 'm': unknown key 'limit'; accepted: source, columns, "
+    with pytest.raises(ValueError, match=r"Matrix 'm': unknown key 'limit'; accepted: source, columns, "
                                          "filters, group_by, measures, sort, rows, cols, value, scale, digits, mark, pick, symmetric$"):
-        build(spec(tmp_path, block("matrix m", text)))
+        build(spec(tmp_path, block("Matrix m", text)))
 
 
 def test_scalar_sort_and_columns(tmp_path):
-    body = (block("datatable t", "source: amrfinder\ncolumns: element_symbol\nsort: element_symbol\n")
-            + block("datatable g", "source: amrfinder\ngroup_by: element_type\nsort: element_type\n"))
+    body = (block("DataTable t", "source: amrfinder\ncolumns: element_symbol\nsort: element_symbol\n")
+            + block("DataTable g", "source: amrfinder\ngroup_by: element_type\nsort: element_type\n"))
     page, manifest, _ = cli.build_report(spec(tmp_path, body))
     assert [b["output_columns"] for b in manifest["blocks"][1:]] == [["element_symbol"], ["element_type"]]
 
 
 @pytest.mark.parametrize("text, error", [
-    ("columns: [sample, nope]\n", 'datatable \'t\': Binder Error: Referenced column "nope" not found'),
-    ("filters:\n  nope: x\n", 'datatable \'t\': Binder Error: Referenced column "nope" not found'),
+    ("columns: [sample, nope]\n", 'DataTable \'t\': Binder Error: Referenced column "nope" not found'),
+    ("filters:\n  nope: x\n", 'DataTable \'t\': Binder Error: Referenced column "nope" not found'),
 ])
 def test_query_duckdb_error(tmp_path, text, error):
     with pytest.raises(cli.SpecError, match=r"^spec.md:6: " + re.escape(error)):
-        build(spec(tmp_path, block("datatable t", "source: amrfinder\n" + text)))
+        build(spec(tmp_path, block("DataTable t", "source: amrfinder\n" + text)))
 
 
 def test_block_yaml_error(tmp_path):
-    with pytest.raises(ValueError, match=r"^spec.md:6: datatable 'x': invalid YAML on line 9: "):
-        build(spec(tmp_path, block("datatable x", "source: amrfinder\nfilters: [a\n")))
+    with pytest.raises(ValueError, match=r"^spec.md:6: DataTable 'x': invalid YAML on line 9: "):
+        build(spec(tmp_path, block("DataTable x", "source: amrfinder\nfilters: [a\n")))
 
 
 def test_cannot_read_file(tmp_path):
@@ -876,25 +882,25 @@ def test_cannot_read_file(tmp_path):
 
 def test_page_title_and_no_heading(tmp_path):
     path = tmp_path / "my report.md"
-    path.write_text("Some prose.\n\n" + INPUT + block("datatable t", "source: amrfinder\ncolumns: sample\n"))
+    path.write_text("Some prose.\n\n" + INPUT + block("DataTable t", "source: amrfinder\ncolumns: sample\n"))
     out = build(path)
     assert "<title>my report</title>" in out
     assert "<h1" not in out and "<main>\n<p>Some prose.</p>\n" in out
 
 
 def test_block_body_not_a_mapping(tmp_path):
-    with pytest.raises(cli.SpecError, match="spec.md:6: matrix 'm': the body must be YAML keys and values"):
-        build(spec(tmp_path, block("matrix m", "- source\n")))
+    with pytest.raises(cli.SpecError, match="spec.md:6: Matrix 'm': the body must be YAML keys and values"):
+        build(spec(tmp_path, block("Matrix m", "- source\n")))
 
 
 @pytest.mark.parametrize("fence, problem", [
-    ("```datatable\nsource: amrfinder\n```\n", "'```datatable' is not read as a block: expected ```datatable <name>, "
+    ("```DataTable\nsource: amrfinder\n```\n", "'```DataTable' is not read as a block: expected ```DataTable <name>, "
                                                "one space, the name letters, digits and underscores"),
-    ("```datatable  two\nsource: amrfinder\n```\n", "'```datatable  two' is not read as a block: expected"),
+    ("```DataTable  two\nsource: amrfinder\n```\n", "'```DataTable  two' is not read as a block: expected"),
     ("```query my-hits\nsource: amrfinder\n```\n", "'```query my-hits' is not read as a block: expected"),
     ("```sql\nselect 1\n```\n", "'```sql' is not read as a block: expected ```sql <name>"),
     ("```input\nadapter: tsv\n```\n", "'```input' is not read as a block: expected ```input <name>"),
-    ("```datatable open\nsource: amrfinder\n", "'```datatable open' is never closed"),
+    ("```DataTable open\nsource: amrfinder\n", "'```DataTable open' is never closed"),
 ])
 def test_unparsed_fence_warns(tmp_path, fence, problem):
     page, manifest, _ = cli.build_report(spec(tmp_path, "prose\n\n" + fence))
@@ -907,17 +913,17 @@ def test_unparsed_fence_warns(tmp_path, fence, problem):
 def test_no_warnings(tmp_path):
     assert cli.build_report(COHORT)[1]["warnings"] == []
     assert cli.build_report(SPEC)[1]["warnings"] == []
-    body = "```python\nx = 1\n```\n" + block("sql x", "select '\n```datatable\n' as s\n")  # inside a parsed block
+    body = "```python\nx = 1\n```\n" + block("sql x", "select '\n```DataTable\n' as s\n")  # inside a parsed block
     assert cli.build_report(spec(tmp_path, body))[1]["warnings"] == []
 
 
 def test_empty_result_warns(tmp_path):
     (tmp_path / "e.csv").write_text("a,b\n")
-    body = (block("datatable t", "source: amrfinder\nfilters:\n  element_type: AMRR\n")
+    body = (block("DataTable t", "source: amrfinder\nfilters:\n  element_type: AMRR\n")
             + block("sql s", "select 1 as n where false\n") + block("query u", "source: amrfinder\n")
             + block("input e", "adapter: csv\npath: e.csv\n"))
     page, manifest, _ = cli.build_report(spec(tmp_path, body))
-    assert manifest["warnings"] == ["spec.md:6: datatable 't': 0 rows; check the filter values: element_type = AMRR",
+    assert manifest["warnings"] == ["spec.md:6: DataTable 't': 0 rows; check the filter values: element_type = AMRR",
                                     "spec.md:11: sql 's': 0 rows", "spec.md:17: input 'e': 0 rows"]
     assert "check the filter values" not in page
 
@@ -943,22 +949,22 @@ def test_main_success(tmp_path, monkeypatch, capsys):
     assert lines[3].startswith("cohort.md:13: input tree: 18 rows; columns: file, tree, node, parent, label, branch_length, "
                                "support, is_tip, comment")
     assert lines[4:] == [
-        "cohort.md:22: mlst_table st: 10 rows in 1 table; columns: sample, scheme, sequence_type, calls",
+        "cohort.md:22: MlstTable st: 10 rows in 1 table; columns: sample, scheme, sequence_type, calls",
         "cohort.md:31: sql summary: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, stress_hits",
-        "cohort.md:44: datatable summary_table: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, "
+        "cohort.md:44: DataTable summary_table: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, "
         "stress_hits",
-        "cohort.md:52: tree phylogeny: 10 tips, 10 matched",
-        "cohort.md:64: matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
+        "cohort.md:52: Tree phylogeny: 10 tips, 10 matched",
+        "cohort.md:64: Matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
         "lowest_coverage, copies",
     ]
     assert out.read_text().startswith("<!doctype html>")
     data = json.loads(manifest.read_text())
     assert data["warnings"] == []
     assert data["blocks"][3]["tables"] == 1
-    assert data["blocks"][6] == {"line": 52, "kind": "tree", "name": "phylogeny", "tips": 10, "matched": 10}
+    assert data["blocks"][6] == {"line": 52, "kind": "Tree", "name": "phylogeny", "tips": 10, "matched": 10}
     assert data["blocks"][7]["output_columns"][-1] == "copies"
     assert data["queries"][-1]["layout"]["scale"] == [90, 100]
-    assert [q["kind"] for q in data["queries"]] == ["mlst_table", "datatable", "matrix"]
+    assert [q["kind"] for q in data["queries"]] == ["MlstTable", "DataTable", "Matrix"]
     assert data["queries"][0]["tables"] == [{"caption": "saureus", "rows": 10, "columns": [
         "sample", "sequence_type", "arcC", "aroE", "glpF", "gmk", "pta", "tpi", "yqiL"]}]
     assert list(data["inputs"]) == ["mlst", "amrfinder", "tree"]
@@ -966,22 +972,22 @@ def test_main_success(tmp_path, monkeypatch, capsys):
 
 
 def test_main_warnings(tmp_path, monkeypatch, capsys):
-    path = spec(tmp_path, "```datatable\nx\n```\n" + block("datatable t", "source: amrfinder\nfilters:\n  sample: nope\n"))
+    path = spec(tmp_path, "```DataTable\nx\n```\n" + block("DataTable t", "source: amrfinder\nfilters:\n  sample: nope\n"))
     assert run_main(monkeypatch, path, "-o", tmp_path / "r.html") == 0
     stdout, stderr = capsys.readouterr()
     assert stderr.splitlines() == [
-        "groundie: warning: spec.md:6: fence '```datatable' is not read as a block: expected ```datatable <name>, "
+        "groundie: warning: spec.md:6: fence '```DataTable' is not read as a block: expected ```DataTable <name>, "
         "one space, the name letters, digits and underscores; rendered as a code block",
-        "groundie: warning: spec.md:9: datatable 't': 0 rows; check the filter values: sample = nope",
+        "groundie: warning: spec.md:9: DataTable 't': 0 rows; check the filter values: sample = nope",
     ]
-    assert "spec.md:9: datatable t: 0 rows; columns: sample, " in stdout
+    assert "spec.md:9: DataTable t: 0 rows; columns: sample, " in stdout
 
 
 @pytest.mark.parametrize("body, error", [
-    (block("matrix m", "source: amrfinder\n"), "spec.md:6: matrix 'm': needs 'rows'"),  # parse time
+    (block("Matrix m", "source: amrfinder\n"), "spec.md:6: Matrix 'm': needs 'rows'"),  # parse time
     (block("sql q", "select * from nope\n"), "spec.md:6: sql 'q': Catalog Error: Table with name nope does not exist!"),
-    (block("datatable t", "source: amrfinder\ncolumns: [sample, nope]\n"),
-     "spec.md:6: datatable 't': Binder Error: Referenced column \"nope\" not found in FROM clause!"),
+    (block("DataTable t", "source: amrfinder\ncolumns: [sample, nope]\n"),
+     "spec.md:6: DataTable 't': Binder Error: Referenced column \"nope\" not found in FROM clause!"),
     (block("query d", "source: amrfinder\nsort: [nope]\n"),
      "spec.md:6: query 'd': Binder Error: Referenced column \"nope\" not found in FROM clause!"),
     (block("input x", "adapter: tsv\npath: nope.tsv\n"), "spec.md:6: input 'x': 'nope.tsv' is not a file"),
@@ -997,7 +1003,7 @@ def test_main_error(tmp_path, monkeypatch, capsys, body, error):
 
 @pytest.mark.parametrize("args", [["nope.md"], ["spec.md"]])
 def test_main_error_without_traceback(tmp_path, monkeypatch, capsys, args):
-    (tmp_path / "spec.md").write_text("```datatable t\nsource: [t\n```\n")
+    (tmp_path / "spec.md").write_text("```DataTable t\nsource: [t\n```\n")
     assert run_main(monkeypatch, *(tmp_path / a for a in args), "-o", tmp_path / "r.html") == 1
     stderr = capsys.readouterr().err
     assert stderr.startswith("groundie: error: ") and stderr.count("\n") == 1 and "Traceback" not in stderr
@@ -1028,7 +1034,7 @@ def test_manifest_is_json(path):
 
 def test_mash_adapter(tmp_path):
     (tmp_path / "d.tsv").write_text("genomes/A.fa.gz\tsketches/B.msh\t0.001\t0\t9000/10000\n")
-    text = block("input d", "adapter: mash\npath: d.tsv\n") + block("datatable t", "source: d\n")
+    text = block("input d", "adapter: mash\npath: d.tsv\n") + block("DataTable t", "source: d\n")
     page, manifest, con = cli.build_report(write(tmp_path, text))
     assert con.execute("select * from d").fetchall() == [("A", "B", 0.001, 0.0, 9000, 10000)]
 
@@ -1036,7 +1042,7 @@ def test_mash_adapter(tmp_path):
 def test_mlst_adapter(tmp_path):
     # Real mlst 2.23 output: `mlst genomes/SAMD00654274.fa.gz rerun/SAMD00654274.fa.gz genomes/unknown.fa`,
     # where the rerun is another genome under the same name and unknown.fa is random sequence.
-    text = block("input m", f"adapter: mlst\npaths: [{MLST}, {FIXTURES / 'mlst_edge.tsv'}]\n") + block("datatable t", "source: m\n")
+    text = block("input m", f"adapter: mlst\npaths: [{MLST}, {FIXTURES / 'mlst_edge.tsv'}]\n") + block("DataTable t", "source: m\n")
     page, manifest, con = cli.build_report(write(tmp_path, text))
     got = con.execute("select * from m").fetchall()
     assert [f["rows"] for f in manifest["inputs"]["m"]["files"]] == [10, 3]
@@ -1167,7 +1173,7 @@ def test_mlst_sample_names_match_mash(file):
 
 def test_clusters(tmp_path):
     text = (block("input mash", f"adapter: mash\npath: {MASH}\n") + block("clusters c", "source: mash\nthreshold: 0.005\n")
-            + block("datatable t", "source: c\n"))
+            + block("DataTable t", "source: c\n"))
     page, manifest, con = cli.build_report(write(tmp_path, text))
     got = {}
     for sample, cluster, n in con.execute("select * from c").fetchall():
@@ -1209,7 +1215,7 @@ def test_checks(tmp_path):
     text = (block("input q", "adapter: tsv\npath: q.tsv\n")
             + block("checks qc", "source: q\nchecks:\n  len: {min: 100, max: 100}\n  N50: {above: 10}\n"
                     "  gc: {below: 33.5, above: 32}\n")
-            + block("datatable t", "source: qc\n"))
+            + block("DataTable t", "source: qc\n"))
     page, manifest, con = cli.build_report(write(tmp_path, text))
     assert [d[0] for d in con.execute("select * from qc").description] == ["sample", "len", "N50", "gc", "qc", "qc_failed"]
     assert con.execute("select sample, qc, qc_failed from qc").fetchall() == [
@@ -1242,7 +1248,7 @@ def test_calls(tmp_path):
     (tmp_path / "s.tsv").write_text("sample\nSAMD00654274\nnohits\n")
     calls = "  MRSA: {any: [mecA, mecC]}\n  PVL: {all: [lukF-PV, lukS-PV]}\n  both: {all: [mecA, mecC]}\n"
     text = (block("input amrfinder", f"adapter: amrfinder\npath: {AMRFINDER}\n") + block("input s", "adapter: tsv\npath: s.tsv\n")
-            + block("calls k", f"source: amrfinder\nsamples: s\ncalls:\n{calls}") + block("datatable t", "source: k\n"))
+            + block("calls k", f"source: amrfinder\nsamples: s\ncalls:\n{calls}") + block("DataTable t", "source: k\n"))
     page, manifest, con = cli.build_report(write(tmp_path, text))
     assert [d[0] for d in con.execute("select * from k").description] == ["sample", "MRSA", "PVL", "both"]
     # a sample with no hits is kept, false throughout; 'all' needs every value

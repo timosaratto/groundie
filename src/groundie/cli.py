@@ -23,11 +23,12 @@ from groundie import tables, tree
 from groundie.query import SpecError, ident
 
 BLOCK = re.compile(r"^```(\w+) (\w+)\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
-KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "datatable", "matrix", "amrfinder_matrix",
-         "mlst_table", "tree")
-MATRICES = ("matrix", "amrfinder_matrix")
-TABLES = ("datatable", "mlst_table")
-SUGAR = {"amrfinder_matrix": "amrfinder", "mlst_table": "mlst"}  # a block kind for one adapter's input
+# Data blocks are lowercase; display blocks, which show something, are PascalCase, like JSX components.
+KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "DataTable", "Matrix", "AmrfinderMatrix",
+         "MlstTable", "Tree")
+MATRICES = ("Matrix", "AmrfinderMatrix")
+TABLES = ("DataTable", "MlstTable")
+SUGAR = {"AmrfinderMatrix": "amrfinder", "MlstTable": "mlst"}  # a block kind for one adapter's input
 INPUT_KEYS = ("adapter", "path", "paths", "options")
 LAYOUT_KEYS = ("rows", "cols", "value", "scale", "digits", "mark", "pick", "symmetric")
 PICK = re.compile(r"(max|min)\((\w+)\)")
@@ -57,26 +58,26 @@ def layout(name, block):
     if isinstance(rows, str):
         rows = [rows]
     if not rows or not isinstance(keys.get("cols"), str):
-        raise SpecError(f"matrix {name!r}: needs 'rows' (one or more columns) and 'cols' (one column)")
+        raise SpecError(f"Matrix {name!r}: needs 'rows' (one or more columns) and 'cols' (one column)")
     mark = keys.get("mark")
     if mark is not None and (not isinstance(mark, dict) or set(mark) != {"column", "below"}
                              or not is_num(mark["below"])):
-        raise SpecError(f"matrix {name!r}: 'mark' must be {{column: <column>, below: <number>}}")
+        raise SpecError(f"Matrix {name!r}: 'mark' must be {{column: <column>, below: <number>}}")
     value, scale, digits = keys.get("value"), keys.get("scale"), keys.get("digits")
     if scale is not None and value is None:
-        raise SpecError(f"matrix {name!r}: 'scale' needs 'value', the column it shades")
+        raise SpecError(f"Matrix {name!r}: 'scale' needs 'value', the column it shades")
     if digits is not None and (value is None or scale is not None or not isinstance(digits, int)
                                or isinstance(digits, bool) or digits < 0):
-        raise SpecError(f"matrix {name!r}: 'digits' is a whole number of decimal places, for a 'value' "
+        raise SpecError(f"Matrix {name!r}: 'digits' is a whole number of decimal places, for a 'value' "
                         "shown as text (no 'scale')")
     if scale is not None and not (isinstance(scale, list) and len(scale) == 2 and all(map(is_num, scale))
                                   and scale[0] < scale[1]):
-        raise SpecError(f"matrix {name!r}: 'scale' must be [low, high] with low below high")
+        raise SpecError(f"Matrix {name!r}: 'scale' must be [low, high] with low below high")
     if "pick" in keys and not PICK.fullmatch(str(keys["pick"])):
-        raise SpecError(f"matrix {name!r}: 'pick' must be max(<column>) or min(<column>)")
+        raise SpecError(f"Matrix {name!r}: 'pick' must be max(<column>) or min(<column>)")
     symmetric = keys.get("symmetric", False)
     if not isinstance(symmetric, bool) or symmetric and len(rows) != 1:
-        raise SpecError(f"matrix {name!r}: 'symmetric' is true or false, and true needs one 'rows' column")
+        raise SpecError(f"Matrix {name!r}: 'symmetric' is true or false, and true needs one 'rows' column")
     return Layout(rows, keys["cols"], value, scale, digits, mark, keys.get("pick"), symmetric)
 
 
@@ -88,11 +89,11 @@ def display(name, block):
     if isinstance(value, str):
         return value
     if not isinstance(value, dict):
-        raise SpecError(f"datatable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}, "
+        raise SpecError(f"DataTable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}, "
                         "or names an input whose adapter's titles it shows")
     for column, title in value.items():
         if not isinstance(title, str) or not title.strip():
-            raise SpecError(f"datatable {name!r}: display {str(column)!r} must be text, the column's title")
+            raise SpecError(f"DataTable {name!r}: display {str(column)!r} must be text, the column's title")
     return {str(column): title for column, title in value.items()}
 
 
@@ -100,19 +101,19 @@ AMRFINDER_MATRIX_KEYS = ("source", "filters", "sort", "partial_below")
 
 
 def amrfinder_matrix(name, block):
-    """An amrfinder_matrix block as the query and layout of the matrix it stands for: genes by sample, the
+    """An AmrfinderMatrix block as the query and layout of the matrix it stands for: genes by sample, the
     element type beside the gene unless a filter picks one, and in a cell with several hits the most
     complete, marked when even that one is partial: coverage below partial_below, default 100."""
-    who = f"amrfinder_matrix {name!r}"
+    who = f"AmrfinderMatrix {name!r}"
     unknown = [k for k in block if k not in AMRFINDER_MATRIX_KEYS]
     if unknown:
         raise SpecError(f"{who}: unknown key {', '.join(map(repr, unknown))}; accepted: "
-                         f"{', '.join(AMRFINDER_MATRIX_KEYS)}. For another layout, use a matrix block")
+                         f"{', '.join(AMRFINDER_MATRIX_KEYS)}. For another layout, use a Matrix block")
     block = dict(block)
     partial_below = block.pop("partial_below", 100)
     if not is_num(partial_below):
         raise SpecError(f"{who}: 'partial_below' must be a number, the coverage (%) below which a hit is partial")
-    query = q.normalize(name, block, "amrfinder_matrix")
+    query = q.normalize(name, block, "AmrfinderMatrix")
     rows = ["element_symbol"] if len(query.filters.get("element_type", [])) == 1 else ["element_type", "element_symbol"]
     query.columns = [*rows, "sample", "pct_identity", "pct_coverage"]
     return query, Layout(rows, "sample", mark={"column": "pct_coverage", "below": partial_below}, pick="max(pct_coverage)")
@@ -122,12 +123,12 @@ MLST_TABLE_KEYS = ("source", "filters", "sort")
 
 
 def mlst_table(name, block):
-    """An mlst_table block as its query: every column of the mlst input. The tables are split at build."""
+    """An MlstTable block as its query: every column of the mlst input. The tables are split at build."""
     unknown = [k for k in block if k not in MLST_TABLE_KEYS]
     if unknown:
-        raise SpecError(f"mlst_table {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
-                         f"{', '.join(MLST_TABLE_KEYS)}. For other columns, use a datatable")
-    return q.normalize(name, block, "mlst_table")
+        raise SpecError(f"MlstTable {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
+                         f"{', '.join(MLST_TABLE_KEYS)}. For other columns, use a DataTable")
+    return q.normalize(name, block, "MlstTable")
 
 
 @dataclass
@@ -148,23 +149,23 @@ def tree_block(name, block):
     """Check a tree block's shape. Its source and tips are checked by check_reads, its columns at build."""
     unknown = [k for k in block if k not in TREE_KEYS]
     if unknown:
-        raise SpecError(f"tree {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: {', '.join(TREE_KEYS)}")
+        raise SpecError(f"Tree {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: {', '.join(TREE_KEYS)}")
     if not isinstance(block.get("source"), str):
-        raise SpecError(f"tree {name!r}: needs 'source', an input loaded by the newick adapter")
+        raise SpecError(f"Tree {name!r}: needs 'source', an input loaded by the newick adapter")
     label = [block["label"]] if isinstance(block.get("label"), str) else block.get("label")
     given = [k for k in ("match", "label", "color") if k in block]
     if "tips" not in block and given:
-        raise SpecError(f"tree {name!r}: {', '.join(map(repr, given))} need 'tips', the block to read them from")
+        raise SpecError(f"Tree {name!r}: {', '.join(map(repr, given))} need 'tips', the block to read them from")
     if "tips" in block and not (isinstance(block["tips"], str) and isinstance(block.get("match"), str)):
-        raise SpecError(f"tree {name!r}: 'tips' names a block and needs 'match', the column holding the tip label")
+        raise SpecError(f"Tree {name!r}: 'tips' names a block and needs 'match', the column holding the tip label")
     if label is not None and not (isinstance(label, list) and label and all(isinstance(c, str) for c in label)):
-        raise SpecError(f"tree {name!r}: 'label' must be one column or a list of columns")
+        raise SpecError(f"Tree {name!r}: 'label' must be one column or a list of columns")
     if "color" in block and not isinstance(block["color"], str):
-        raise SpecError(f"tree {name!r}: 'color' must be one column")
+        raise SpecError(f"Tree {name!r}: 'color' must be one column")
     if "file" in block and not isinstance(block["file"], str):
-        raise SpecError(f"tree {name!r}: 'file' must be a file name, as in the input's 'file' column")
+        raise SpecError(f"Tree {name!r}: 'file' must be a file name, as in the input's 'file' column")
     if "tree" in block and not (type(block["tree"]) is int and block["tree"] >= 1):
-        raise SpecError(f"tree {name!r}: 'tree' must be a whole number from 1, the tree's position in its file")
+        raise SpecError(f"Tree {name!r}: 'tree' must be a whole number from 1, the tree's position in its file")
     return TreeBlock(name, block["source"], block.get("tips"), block.get("match"), label, block.get("color"),
                      block.get("file"), block.get("tree"))
 
@@ -273,7 +274,9 @@ def parse_spec(text, name="spec"):
 def parse_block(kind, name, text, line):
     """One block's segment, without its line. 'line' is the line of its opening fence."""
     if kind not in KINDS:
-        raise SpecError(f"unknown block {kind!r} ({kind} {name}); known: {', '.join(KINDS)}")
+        meant = [k for k in KINDS if k.lower() == kind.lower().replace("_", "")]
+        raise SpecError(f"unknown block {kind!r} ({kind} {name}); "
+                         + (f"did you mean {meant[0]}? " if meant else "") + f"known: {', '.join(KINDS)}")
     if kind == "sql":
         return {"type": kind, "block": sql_block(name, text)}
     try:
@@ -284,7 +287,7 @@ def parse_block(kind, name, text, line):
         raise SpecError(f"{kind} {name!r}: the body must be YAML keys and values")
     if kind == "input":
         return {"type": kind, "block": input_block(name, block)}
-    if kind == "tree":  # not a query: it reads its input as it is
+    if kind == "Tree":  # not a query: it reads its input as it is
         return {"type": kind, "block": tree_block(name, block)}
     if kind == "clusters":
         return {"type": kind, "block": clusters_block(name, block)}
@@ -292,16 +295,16 @@ def parse_block(kind, name, text, line):
         return {"type": kind, "block": checks_block(name, block)}
     if kind == "calls":
         return {"type": kind, "block": calls_block(name, block)}
-    if kind == "amrfinder_matrix":
+    if kind == "AmrfinderMatrix":
         query, grid = amrfinder_matrix(name, block)
         return {"type": kind, "block": query, "layout": grid}
-    if kind == "mlst_table":
+    if kind == "MlstTable":
         return {"type": kind, "block": mlst_table(name, block)}
-    if kind == "datatable":
+    if kind == "DataTable":
         titles = display(name, block)
         return {"type": kind, "block": q.normalize(name, block, kind, ("display",)), "display": titles}
-    grid =layout(name, block) if kind == "matrix" else None
-    return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "matrix" else ()),
+    grid =layout(name, block) if kind == "Matrix" else None
+    return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "Matrix" else ()),
             "layout": grid}
 
 
@@ -322,20 +325,20 @@ def check_reads(name, segments):
                     readable = [n for n, s in blocks.items() if s["type"] == "input" or n in above]
                     raise SpecError(f"{who}: {key} {target!r} names no block; readable here: "
                                      f"{', '.join(readable) or 'none'}")
-                if blocks[target]["type"] == "tree":
-                    raise SpecError(f"{who}: {key} {target!r} is a tree block, which no block can read")
+                if blocks[target]["type"] == "Tree":
+                    raise SpecError(f"{who}: {key} {target!r} is a Tree block, which no block can read")
                 if blocks[target]["type"] != "input" and target not in above:
                     raise SpecError(f"{who}: {key} {target!r} is not above this block; "
                                      "a block reads inputs and the blocks above it")
             if isinstance(seg.get("display"), str):
                 check_display(who, seg["display"], blocks)
-            if seg["type"] == "tree":
+            if seg["type"] == "Tree":
                 source = blocks[block.source]
                 if source["type"] != "input" or source["block"].adapter != "newick":
                     what = (f"is loaded by adapter {source['block'].adapter!r}" if source["type"] == "input"
                             else f"is a {source['type']} block")
                     raise SpecError(f"{who}: source {block.source!r} {what}; "
-                                     "a tree block needs an input loaded by the newick adapter")
+                                     "a Tree block needs an input loaded by the newick adapter")
             if seg["type"] in SUGAR:
                 source, adapter = blocks[block.source], SUGAR[seg["type"]]
                 if source["type"] != "input" or source["block"].adapter != adapter:
@@ -343,7 +346,7 @@ def check_reads(name, segments):
                             else f"is a {source['type']} block")
                     raise SpecError(f"{who}: source {block.source!r} {what}; an {seg['type']} needs an "
                                      f"input loaded by the {adapter} adapter; narrow it with filters")
-        if seg["type"] != "tree":
+        if seg["type"] != "Tree":
             above.add(block.name)
 
 
@@ -649,7 +652,7 @@ def pivot(query, grid, columns, rows):
     missing = [c for c in [*grid.rows, grid.cols, grid.value, (grid.mark or {}).get("column"), by]
                if c is not None and c not in columns]
     if missing:
-        raise SpecError(f"matrix {query.name!r}: {', '.join(map(repr, missing))} not an output column; "
+        raise SpecError(f"Matrix {query.name!r}: {', '.join(map(repr, missing))} not an output column; "
                          f"output columns: {', '.join(columns)}")
     at = {c: i for i, c in enumerate(columns)}
     def better(row, than):  # a row with no number in the pick column never wins
@@ -838,7 +841,7 @@ def build_block(con, blocks, manifest, parts, seg):
     """Run one block, append its HTML to parts and its entries to the manifest. Returns its summary: name,
     rows and output columns, or for a tree, tips and matched tips."""
     block, who = seg["block"], f"{seg['type']} {seg['block'].name!r}"
-    if seg["type"] == "tree":
+    if seg["type"] == "Tree":
         figure, notes, entry = tree.render(con, blocks, block)
         manifest["trees"].append(entry)
         chain = [blocks[block.source], *(q.lineage(blocks, block.tips) if block.tips else [])]
@@ -869,7 +872,7 @@ def build_block(con, blocks, manifest, parts, seg):
     manifest["queries"].append(entry)
     if seg["type"] != "query":
         data = con.execute(f"select * from {ident(block.name)}").fetchall()
-    if seg["type"] == "datatable":
+    if seg["type"] == "DataTable":
         written = seg["display"]
         if isinstance(written, str):  # an input: its adapter's titles, for the columns that have one
             declared = ADAPTERS[blocks[written].adapter].TITLES
@@ -885,7 +888,7 @@ def build_block(con, blocks, manifest, parts, seg):
         parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data),
                             q.to_yaml(block) + (q.dump({"display": written}) if written else ""),
                             q.lineage(blocks, block.source)))
-    if seg["type"] == "mlst_table":
+    if seg["type"] == "MlstTable":
         split = tables.mlst_tables(block.name, columns, data, bool(block.sort))
         entry["tables"] = [{"caption": t.caption, "columns": [c for c, _ in t.columns], "rows": len(t.rows)}
                            for t in split]
@@ -913,9 +916,9 @@ def framed(kind, body, spec_yaml, chain, notes=()):
 
 
 def summary_line(name, block):
-    """One block of the build summary, e.g. 'cohort.md:36: datatable st: 10 rows; columns: sample, scheme'."""
+    """One block of the build summary, e.g. 'cohort.md:36: DataTable st: 10 rows; columns: sample, scheme'."""
     where = f"{name}:{block['line']}: {block['kind']} {block['name']}: "
-    if block["kind"] == "tree":
+    if block["kind"] == "Tree":
         matched = "" if block["matched"] is None else f", {block['matched']} matched"
         return where + q.plural(block["tips"], "tip") + matched
     split = f" in {q.plural(block['tables'], 'table')}" if "tables" in block else ""
