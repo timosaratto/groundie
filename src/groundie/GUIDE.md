@@ -99,7 +99,7 @@ options: {null: NA}     # optional; only tsv and csv take options
 
 | Adapter | Files | SQL table |
 | --- | --- | --- |
-| `amrfinder` | AMRFinderPlus TSV, run with `--name` | The columns listed below. `NA` is read as null |
+| `amrfinder` | AMRFinderPlus TSV, version 4 | One row per hit: the columns listed below. `NA` is read as null |
 | `mlst` | mlst's default output: no header; the file, the scheme, the ST, then `locus(call)` for each of the scheme's loci | One row per genome: `sample` (the file, its directories and a `.fa`, `.fasta`, `.fna` or `.fas` extension, with or without `.gz`, stripped), `scheme`, `sequence_type` (a number), and `calls`, a list with one `{locus, call}` per locus of the scheme, in mlst's order. `scheme` and `sequence_type` are null where mlst wrote `-`: no scheme found, no ST assigned. A call is text, as mlst wrote it with its flags: mlst's `tpi(~4)` is `{locus: tpi, call: ~4}`; other calls look like `3`, `4?` and `4,5`. A call is null where mlst wrote `-`, no allele found: `gmk(-)` is `{locus: gmk, call: null}`. A genome with no scheme found has no calls. See the SQL section to read `calls` |
 | `mash` | `mash dist` or `mash triangle -E` output, no header | `reference`, `query` (sample names: the directories and a `.fa`, `.fasta`, `.fna`, `.fas` or `.msh` extension, with or without `.gz`, are stripped), `distance`, `p_value`, `shared_hashes`, `sketch_hashes` |
 | `tsv`, `csv` | Any delimited file | `file` (the file's name), then the file's columns as named. Numbers are read as numbers |
@@ -109,18 +109,28 @@ options: {null: NA}     # optional; only tsv and csv take options
 The column names come from the adapter, not from the file.
 
 Titles, which a `DataTable` shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
-and `sequence_type` ST. No other adapter declares titles yet.
+and `sequence_type` ST. `amrfinder` titles each column by AMRFinderPlus's own header, such as `Element symbol`
+and `% Identity to reference`, and `sample` Sample. No other adapter declares titles yet.
 
 The `amrfinder` columns:
 
 ```
-text:    sample, contig_id, strand, element_symbol, element_name, scope, element_type, element_subtype,
-         element_class, element_subclass, method, ref_accession, ref_name, hmm_accession, hmm_description
+text:    sample, protein_id, contig_id, strand, element_symbol, element_name, scope, element_type,
+         element_subtype, element_class, element_subclass, method, ref_accession, ref_name, hmm_accession,
+         hmm_description, hierarchy_node
 numbers: start_pos, stop_pos, target_length, ref_length, pct_coverage, pct_identity, alignment_length
 ```
 
-`sample` is the file's `Name` column. `element_type`, `element_subtype`, `element_class` and
-`element_subclass` are its `Type`, `Subtype`, `Class` and `Subclass`.
+`sample` is the file's `Name` column, written by `--name`. A file without it takes `sample` from its file name,
+without directories and the last extension: `amrfinder/KP01.tsv` is `KP01`. `element_type`,
+`element_subtype`, `element_class` and `element_subclass` are its `Type`, `Subtype`, `Class` and `Subclass`.
+Files from versions before 4.0, which name most columns differently, are not read: the input fails, naming
+the column it can't find.
+
+Null where AMRFinderPlus writes `NA`: `protein_id` for nucleotide input; `contig_id`, `start_pos`, `stop_pos`
+and `strand` for protein input; `element_class` and `element_subclass` for virulence hits; `ref_length`
+through `ref_name` where no reference was aligned; `hmm_accession` and `hmm_description` unless an HMM
+matched. `hierarchy_node` is null also where AMRFinderPlus ran without `--print_node`.
 
 Only `tsv` and `csv` take `options`:
 

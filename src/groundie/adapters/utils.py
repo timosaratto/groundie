@@ -23,8 +23,13 @@ three steps:
 3. The field's type reads the text: str as is, int and float strictly, and a Struct by its PATTERN, such as
    '{locus}({call})', which splits the text into the Struct's fields, each read as a cell is, from step 1.
 
+A column named in the header can say what to read where a file lacks it: column("Name",
+absent=sample_from_file_name). That too is one value per file, from its path, as DuckDB's
+read_csv(filename = true) gives.
+
 A field may also have a title, column(3, title="ST"): the header a datatable shows for it when its display
-names the input, 'display: mlst'.
+names the input, 'display: mlst'. A column named in the header is titled by that name unless it says
+otherwise.
 
 The class gives the SQL COLUMNS, the JSON SCHEMA, the TITLES and the rows that cli.load_input expects."""
 
@@ -47,6 +52,18 @@ SCALARS = {str: ("string", "varchar"), int: ("integer", "bigint"), float: ("numb
 def extract_sample_name(text):
     """A genome's file as its sample name: the directories and a FASTA extension stripped, as in mash.SAMPLE."""
     return FASTA.sub("", text.rsplit("/", 1)[-1])
+
+
+# Absents: a file's path in, the text to read in place of a column the file lacks out; None for null.
+
+def no_value(path):
+    """Null, on every line of the file."""
+    return None
+
+
+def sample_from_file_name(path):
+    """The file's name without its directories and last extension: 'results/KP01.tsv' is 'KP01'."""
+    return Path(path).stem
 
 
 # Readers, one per type: text in, value out; a ValueError says what the text is not.
@@ -101,21 +118,29 @@ class Source:
     last: int | None  # None: the one cell at first; a position, negative from the line's end: a list of cells
     transform: object
     title: str | None = None
+    absent: object = None  # where the header lacks a named column: a function of the file's path; None: an error
 
     @property
     def many(self):
         return self.last is not None
 
 
-def column(at, transform=None, title=None):
-    """One cell: the column at a position, counted from 1, or of a name in the header."""
-    return Source(at, None, transform, title)
+def column(at, transform=None, title=None, absent=None):
+    """One cell: the column at a position, counted from 1, or of a name in the header. absent: where the
+    header lacks the name, a function of the file's path giving the text to read in its place, such as
+    no_value; by default it's an error."""
+    return Source(at, None, transform, title, absent)
 
 
 def columns(first, last, transform=None, title=None):
     """A list of cells: the columns from position first through last, both counted from 1, as in DuckDB's
     list_slice. A negative last counts from each line's end: -1 is its last cell, -2 the one before."""
     return Source(first, last, transform, title)
+
+
+class Absent(NamedTuple):
+    """The value, the same on every line, of a column the file lacks."""
+    value: object
 
 
 class Field(NamedTuple):
@@ -125,7 +150,12 @@ class Field(NamedTuple):
 
     @property
     def title(self):
-        return self.source.title if isinstance(self.source, Source) else None
+        """The source's title; by default, a column named in the header is titled by that name."""
+        if not isinstance(self.source, Source):
+            return None
+        if self.source.title is None and isinstance(self.source.first, str):
+            return self.source.first
+        return self.source.title
 
 
 class Struct:
@@ -178,9 +208,11 @@ class Adapter:
         path = Path(path)
         lines = [(n, line.split(cls.FORMAT.delimiter))
                  for n, line in enumerate(path.read_text().splitlines(), 1) if line.strip()]
-        header = lines.pop(0)[1] if cls.FORMAT.header and lines else None
+        if cls.FORMAT.header and not lines:  # not even a header: no rows
+            return []
+        header = lines.pop(0)[1] if cls.FORMAT.header else None
         try:
-            where = cls.cells(header)
+            where = cls.cells(header, path)
         except ValueError as e:
             raise ValueError(f"{path.name}: {e}") from None
         out = []
@@ -192,15 +224,22 @@ class Adapter:
         return out
 
     @classmethod
-    def cells(cls, header):
-        """Each field's cells in a line: an index, or a slice for a list."""
+    def cells(cls, header, path):
+        """Each field's cells in a line: an index, a slice for a list, or the Absent value of a column the
+        file lacks."""
         out = []
-        for f in cls.FIELDS.values():
+        for name, f in cls.FIELDS.items():
             s = f.source
             if isinstance(s.first, str):
-                if s.first not in header:
+                if s.first in header:
+                    out.append(header.index(s.first))
+                elif s.absent:
+                    try:
+                        out.append(Absent(read(s.absent(path), f.hint, None)))
+                    except ValueError as e:
+                        raise ValueError(f"{name}: {e}") from None
+                else:
                     raise ValueError(f"no column {s.first!r}; the header has {', '.join(map(repr, header))}")
-                out.append(header.index(s.first))
             else:
                 out.append(slice(s.first - 1, s.last if s.last > 0 else s.last + 1 or None) if s.many else s.first - 1)
         return out
@@ -219,7 +258,9 @@ class Adapter:
         out = []
         for (name, f), at in zip(cls.FIELDS.items(), where):
             try:
-                if f.source.many:
+                if isinstance(at, Absent):
+                    out.append(at.value)
+                elif f.source.many:
                     out.append([read(text, get_args(f.hint)[0], cls.FORMAT.null, f.source.transform) for text in cells[at]])
                 else:
                     out.append(read(cells[at], f.hint, cls.FORMAT.null, f.source.transform))
@@ -250,6 +291,10 @@ def source_problem(format, f):
         return "a title is text, the header a datatable shows"
     if isinstance(s.first, str) and not format.header:
         return f"names column {s.first!r}, but the format has no header"
+    if s.absent and not isinstance(s.first, str):
+        return "absent is for a column named in the header"
+    if s.absent is no_value and not nullable:
+        return "absent=no_value is null, which only a type with '| None' allows"
     if s.many and not isinstance(s.last, int):
         return "columns(...) ends at a position: -1 for each line's last"
     if isinstance(s.first, int) and s.first < 1 or s.last == 0 or isinstance(s.last, int) and 0 < s.last < s.first:

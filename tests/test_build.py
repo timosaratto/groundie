@@ -7,7 +7,7 @@ import pytest
 
 from groundie import cli
 from groundie import query as q
-from groundie.adapters import mash, mlst, utils
+from groundie.adapters import amrfinder, mash, mlst, utils
 from groundie.cli import build
 
 SPEC = Path(__file__).parent.parent / "examples" / "SAMD00654274.md"
@@ -354,7 +354,7 @@ def test_datatable_display_from_input(tmp_path):
     ("nope", "spec.md:12: DataTable 'st': display 'nope' names no block; inputs: mlst, t"),
     ("q", "DataTable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
     ("t", "DataTable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
-          "adapters with titles: mlst"),
+          "adapters with titles: amrfinder, mlst"),
 ])
 def test_datatable_display_from_input_shape(tmp_path, display, error):
     (tmp_path / "t.tsv").write_text("n\n1\n")
@@ -945,7 +945,7 @@ def test_main_success(tmp_path, monkeypatch, capsys):
     lines = stdout.splitlines()
     assert lines[0] == f"built {out} from {COHORT}"
     assert lines[1] == "cohort.md:3: input mlst: 10 rows; columns: sample, scheme, sequence_type, calls"
-    assert lines[2].startswith("cohort.md:8: input amrfinder: 334 rows; columns: sample, contig_id, ")
+    assert lines[2].startswith("cohort.md:8: input amrfinder: 334 rows; columns: sample, protein_id, contig_id, ")
     assert lines[3].startswith("cohort.md:13: input tree: 18 rows; columns: file, tree, node, parent, label, branch_length, "
                                "support, is_tip, comment")
     assert lines[4:] == [
@@ -953,15 +953,15 @@ def test_main_success(tmp_path, monkeypatch, capsys):
         "cohort.md:31: sql summary: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, stress_hits",
         "cohort.md:44: DataTable summary_table: 10 rows; columns: sample, sequence_type, amr_hits, virulence_hits, "
         "stress_hits",
-        "cohort.md:52: Tree phylogeny: 10 tips, 10 matched",
-        "cohort.md:64: Matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
+        "cohort.md:58: Tree phylogeny: 10 tips, 10 matched",
+        "cohort.md:70: Matrix resistome: 129 rows; columns: sample, element_class, element_symbol, best_identity, "
         "lowest_coverage, copies",
     ]
     assert out.read_text().startswith("<!doctype html>")
     data = json.loads(manifest.read_text())
     assert data["warnings"] == []
     assert data["blocks"][3]["tables"] == 1
-    assert data["blocks"][6] == {"line": 52, "kind": "Tree", "name": "phylogeny", "tips": 10, "matched": 10}
+    assert data["blocks"][6] == {"line": 58, "kind": "Tree", "name": "phylogeny", "tips": 10, "matched": 10}
     assert data["blocks"][7]["output_columns"][-1] == "copies"
     assert data["queries"][-1]["layout"]["scale"] == [90, 100]
     assert [q["kind"] for q in data["queries"]] == ["MlstTable", "DataTable", "Matrix"]
@@ -1054,13 +1054,15 @@ def test_mlst_adapter(tmp_path):
     assert got[12] == ("unknown", None, None, [])  # no scheme found: kept, with no calls
 
 
-def test_mlst_rows_match_schema():
+@pytest.mark.parametrize("adapter, paths", [
+    (mlst.Mlst, [MLST, FIXTURES / "mlst_edge.tsv"]),
+    (amrfinder.Amrfinder, [AMRFINDER]),
+])
+def test_rows_match_schema(adapter, paths):
     from jsonschema import Draft202012Validator
-    adapter = mlst.Mlst
     Draft202012Validator.check_schema(adapter.SCHEMA)
     names = [n for n, _ in adapter.COLUMNS]
-    rows = adapter.rows(MLST, {}) + adapter.rows(FIXTURES / "mlst_edge.tsv", {})
-    for row in rows:
+    for row in [row for path in paths for row in adapter.rows(path, {})]:
         Draft202012Validator(adapter.SCHEMA).validate(dict(zip(names, row)))
 
 
@@ -1070,6 +1072,31 @@ def test_adapter_titles():
     assert properties["sequence_type"]["title"] == "ST"
     assert properties["sequence_type"]["description"] == "The ST; null when none was assigned."
     assert "title" not in properties["calls"]
+    titles = amrfinder.Amrfinder.TITLES  # by default, the header's name
+    assert titles["sample"] == "Sample" and titles["pct_identity"] == "% Identity to reference"
+    assert len(titles) == len(amrfinder.Amrfinder.COLUMNS)
+
+
+def test_amrfinder_rows(tmp_path):
+    hit = ("SAMD00654274", None, "SAMD00654274.contig00001", 72659, 75058, "-", "parC_S80Y",
+           "Staphylococcus aureus quinolone resistant ParC", "core", "AMR", "POINT", "QUINOLONE", "QUINOLONE", "POINTX",
+           800, 800, 100.0, 99.5, 800, "WP_001289586.1", "DNA topoisomerase IV subunit A ParC", None, None, None)
+    assert amrfinder.Amrfinder.rows(AMRFINDER, {})[0] == hit
+    # the same file as if run without --name and with --print_node
+    lines = [line.split("\t", 1)[1] for line in AMRFINDER.read_text().splitlines()[:2]]
+    (tmp_path / "KP01.tsv").write_text(f"{lines[0]}\tHierarchy node\n{lines[1]}\tparC_S80Y\n")
+    assert amrfinder.Amrfinder.rows(tmp_path / "KP01.tsv", {}) == [("KP01", *hit[1:-1], "parC_S80Y")]
+
+
+def test_amrfinder_missing_column(tmp_path):
+    (tmp_path / "a.tsv").write_text("Name\tProtein id\n")
+    with pytest.raises(ValueError, match=r"^a\.tsv: no column 'Contig id'; the header has 'Name', 'Protein id'$"):
+        amrfinder.Amrfinder.rows(tmp_path / "a.tsv", {})
+    (tmp_path / "a.tsv").write_text("Protein identifier\tContig id\tStart\n")  # version 3, not read
+    with pytest.raises(ValueError, match=r"^a\.tsv: no column 'Protein id'; the header has 'Protein identifier', "):
+        amrfinder.Amrfinder.rows(tmp_path / "a.tsv", {})
+    (tmp_path / "a.tsv").write_text("")
+    assert amrfinder.Amrfinder.rows(tmp_path / "a.tsv", {}) == []
 
 
 def test_mlst_rows(tmp_path):
@@ -1115,9 +1142,12 @@ class Part(utils.Struct):
     (bool, utils.column(2), "no reader for <class 'bool'>"),
     (str, utils.column(2, title=""), "a title is text, the header a datatable shows"),
     (str, utils.column(2, title=7), "a title is text, the header a datatable shows"),
+    (str, utils.column(2, absent=utils.no_value), "absent is for a column named in the header"),
 ])
 def test_adapter_checks(hint, source, problem):
     assert utils.source_problem(utils.Tsv(header=False), utils.Field(hint, source, None)) == problem
+    assert (utils.source_problem(utils.Tsv(header=True), utils.Field(str, utils.column("N", absent=utils.no_value), None))
+            == "absent=no_value is null, which only a type with '| None' allows")
     with pytest.raises(TypeError, match=r"^Bad.n: needs a source: column\(\.\.\.\) or columns\(\.\.\.\)$"):
         class Bad(utils.Adapter):
             FORMAT = utils.Tsv(header=False)
