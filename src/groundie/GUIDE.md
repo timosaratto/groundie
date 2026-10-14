@@ -148,11 +148,28 @@ sort: [sample]                     # a group_by column or a measure
 Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(column)`, every value of the
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
-- These are all the query keys. Any other key is an error, except a matrix's layout keys.
+- These are all the query keys. Any other key is an error, except a matrix's layout keys and a datatable's
+  `display`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
 - Joins, expressions, ranges and descending order need a `sql` block.
 - A block reading a `sql` block, with no `sort`, keeps the order of the statement's `order by`.
+
+### display
+
+A datatable, and only a datatable, takes `display`: a title for some of its columns, shown as the header in
+place of the column's name.
+
+```yaml
+source: mlst
+columns: [sample, sequence_type]
+display:
+  sequence_type: ST        # the header shows ST; the column's name stays in its title
+```
+
+- Each key is one of the block's output columns; each title is text.
+- Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
+  `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 
 ## sql
 
@@ -393,6 +410,7 @@ One row per genome, from mlst. A – in the ST column means none was assigned.
 source: mlst
 columns: [sample, sequence_type]
 sort: [sample]
+display: {sample: Sample, sequence_type: ST}
 ```
 
 ```tree phylogeny

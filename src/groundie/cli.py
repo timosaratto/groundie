@@ -80,6 +80,18 @@ def layout(name, block):
     return Layout(rows, keys["cols"], value, scale, digits, mark, keys.get("pick"), symmetric)
 
 
+def display(name, block):
+    """Take a datatable's display key out of the block (the rest is the query): each column's title, by
+    column. Whether it names output columns is checked at build, when they are known."""
+    value = block.pop("display", None) or {}
+    if not isinstance(value, dict):
+        raise SpecError(f"datatable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}")
+    for column, title in value.items():
+        if not isinstance(title, str) or not title.strip():
+            raise SpecError(f"datatable {name!r}: display {str(column)!r} must be text, the column's title")
+    return {str(column): title for column, title in value.items()}
+
+
 AMRFINDER_MATRIX_KEYS = ("source", "filters", "sort", "partial_below")
 
 
@@ -281,6 +293,9 @@ def parse_block(kind, name, text, line):
         return {"type": kind, "block": query, "layout": grid}
     if kind == "mlst_table":
         return {"type": kind, "block": mlst_table(name, block)}
+    if kind == "datatable":
+        titles = display(name, block)
+        return {"type": kind, "block": q.normalize(name, block, kind, ("display",)), "display": titles}
     grid =layout(name, block) if kind == "matrix" else None
     return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "matrix" else ()),
             "layout": grid}
@@ -834,7 +849,15 @@ def build_block(con, blocks, manifest, parts, seg):
     if seg["type"] != "query":
         data = con.execute(f"select * from {ident(block.name)}").fetchall()
     if seg["type"] == "datatable":
-        parts.append(framed("datatable", render_datatable([(c, c) for c in columns], data), q.to_yaml(block),
+        titles = seg["display"]
+        outside = [c for c in titles if c not in columns]
+        if outside:
+            raise SpecError(f"{who}: display names {', '.join(map(repr, outside))}, not an output column; "
+                            f"output columns: {', '.join(columns)}")
+        if titles:
+            entry["display"] = titles
+        parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data),
+                            q.to_yaml(block) + (q.dump({"display": titles}) if titles else ""),
                             q.lineage(blocks, block.source)))
     if seg["type"] == "mlst_table":
         split = tables.mlst_tables(block.name, columns, data, bool(block.sort))

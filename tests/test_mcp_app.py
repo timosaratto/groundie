@@ -59,6 +59,14 @@ def test_render_blocks_inline():
     assert '<section class="block datatable">' in result.structured_content["html"]
 
 
+def test_render_blocks_display_keeps_raw_names():
+    blocks = AMRFINDER + ("\n```datatable classes\nsource: amrfinder\ngroup_by: [element_class]\n"
+                          "display: {element_class: Class}\n```\n")
+    _, _, result = call({"blocks": blocks, "base_dir": str(DATA)}, APPS_HOST)
+    assert "\n\ndatatable classes:\nelement_class\n" in result.content[0].text
+    assert '<th title="element_class">Class</th>' in result.structured_content["html"]
+
+
 def test_render_blocks_inline_paths():
     block = "```input amrfinder\nadapter: amrfinder\npath: {}\n```\n"
     _, _, result = call({"blocks": block.format("amrfinder_results/SAMD00654274.tsv")})
