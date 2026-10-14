@@ -17,5 +17,7 @@ report*.html
 # private working notes, evals (not for the public repo)
 private/
 
-# local Claude Code settings
+# local Claude Code settings and scratch space
 .claude/
+CLAUDE.local.md
+.scratch/
