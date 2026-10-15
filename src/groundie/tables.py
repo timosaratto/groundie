@@ -81,7 +81,7 @@ def spread(who, columns, rows, column, names, values):
         if row[i] is None:
             found.append(None)
             continue
-        if not (isinstance(row[i], list) and all(
+        if not (isinstance(row[i], (list, tuple)) and all(  # DuckDB gives a fixed-size ARRAY as a tuple
                 isinstance(e, dict) and names in e and values in e and not isinstance(e[names], (list, dict))
                 for e in row[i])):
             raise SpecError(f"{who}: spread {column!r}: row {n} holds {row[i]!r}, not {shape}")

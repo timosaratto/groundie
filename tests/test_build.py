@@ -463,6 +463,13 @@ def test_datatable_spread_null_list_and_sql_source(tmp_path):
     assert "<tr><td>S0</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>4</td><td>3</td></tr>" in out
 
 
+def test_datatable_spread_fixed_size_array(tmp_path):
+    sql = ("select 'x' as sample, [{'locus': 'a', 'call': '1'}, {'locus': 'b', 'call': '2'}]"
+           "::STRUCT(locus VARCHAR, call VARCHAR)[2] as calls\n")
+    out = build(mlst_spec(tmp_path, block("sql n", sql) + block("DataTable st", "source: n\n" + SPREAD)))
+    assert "<tr><td>x</td><td>1</td><td>2</td></tr>" in out
+
+
 def test_datatable_spread_query_source(tmp_path):
     body = (block("query q", "source: mlst\ncolumns: [sample, calls]\nfilters: {scheme: ecoli_achtman_4}\n")
             + block("DataTable st", "source: q\nsort: [sample]\n" + SPREAD))
