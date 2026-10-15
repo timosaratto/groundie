@@ -90,8 +90,8 @@ def display(name, block):
     if isinstance(value, str):
         return value
     if not isinstance(value, dict):
-        raise SpecError(f"DataTable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}, "
-                        "or names an input whose adapter's titles it shows")
+        raise SpecError(f"DataTable {name!r}: 'display' maps columns to their titles, or to {{title, description}}, "
+                        "e.g. {sequence_type: ST}, or names an input whose adapter's titles and descriptions it shows")
     for column, entry in value.items():
         parts = entry if isinstance(entry, dict) else {"title": entry}
         if (not parts or set(parts) - {"title", "description"}
@@ -362,18 +362,21 @@ def check_reads(name, segments):
 
 
 def check_display(who, target, blocks):
-    """A datatable's 'display: <name>' names an input loaded by an adapter that declares titles."""
-    titled = ", ".join(a for a, adapter in ADAPTERS.items() if getattr(adapter, "TITLES", None))
+    """A datatable's 'display: <name>' names an input loaded by an adapter that declares titles or
+    descriptions."""
+    def displays(adapter):
+        return getattr(adapter, "TITLES", None) or getattr(adapter, "DESCRIPTIONS", None)
     if target not in blocks:
         inputs = [n for n, s in blocks.items() if s["type"] == "input"]
         raise SpecError(f"{who}: display {target!r} names no block; inputs: {', '.join(inputs) or 'none'}")
     if blocks[target]["type"] != "input":
         raise SpecError(f"{who}: display {target!r} is a {blocks[target]['type']} block; display names an "
-                         "input, whose adapter's titles it shows")
+                         "input, whose adapter's titles and descriptions it shows")
     adapter = blocks[target]["block"].adapter
-    if not getattr(ADAPTERS[adapter], "TITLES", None):
-        raise SpecError(f"{who}: display {target!r} is loaded by adapter {adapter!r}, which declares no titles; "
-                         f"adapters with titles: {titled}")
+    if not displays(ADAPTERS[adapter]):
+        shown = ", ".join(a for a, cls in ADAPTERS.items() if displays(cls))
+        raise SpecError(f"{who}: display {target!r} is loaded by adapter {adapter!r}, which declares no titles "
+                         f"or descriptions; adapters with them: {shown}")
 
 
 def yaml_line(e, first):
@@ -897,8 +900,10 @@ def build_block(con, blocks, manifest, parts, seg):
         written = seg["display"]
         if isinstance(written, str):  # an input: its adapter's titles and descriptions, for the columns that have one
             adapter = ADAPTERS[blocks[written].adapter]
-            titles = {c: adapter.TITLES[c] for c in columns if c in adapter.TITLES}
-            descriptions = {c: adapter.DESCRIPTIONS[c] for c in columns if c in adapter.DESCRIPTIONS}
+            adapter_titles = getattr(adapter, "TITLES", {})
+            adapter_descriptions = getattr(adapter, "DESCRIPTIONS", {})
+            titles = {c: adapter_titles[c] for c in columns if c in adapter_titles}
+            descriptions = {c: adapter_descriptions[c] for c in columns if c in adapter_descriptions}
         else:
             outside = [c for c in written if c not in columns]
             if outside:

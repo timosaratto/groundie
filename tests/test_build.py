@@ -351,8 +351,9 @@ def test_datatable_display_every_column(tmp_path):
     ("display: {sequence_type: {title: ' '}}\n", "display 'sequence_type' must be text, the column's title"),
     ("display: {sequence_type: [ST]}\n", "display 'sequence_type' must be text, the column's title"),
     ("display: {st: {title: ST}}\n", "display names 'st', not an output column"),
-    ("display: [sequence_type]\n", "DataTable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
-                                   "or names an input whose adapter's titles it shows"),
+    ("display: [sequence_type]\n", "DataTable 'st': 'display' maps columns to their titles, or to "
+                                   "{title, description}, e.g. {sequence_type: ST}, or names an input whose "
+                                   "adapter's titles and descriptions it shows"),
 ])
 def test_datatable_display_shape(tmp_path, body, error):
     with pytest.raises(cli.SpecError, match=re.escape(error)):
@@ -380,9 +381,10 @@ def test_datatable_display_from_input(tmp_path):
 
 @pytest.mark.parametrize("display, error", [
     ("nope", "spec.md:12: DataTable 'st': display 'nope' names no block; inputs: mlst, t"),
-    ("q", "DataTable 'st': display 'q' is a query block; display names an input, whose adapter's titles it shows"),
-    ("t", "DataTable 'st': display 't' is loaded by adapter 'tsv', which declares no titles; "
-          "adapters with titles: amrfinder, mlst"),
+    ("q", "DataTable 'st': display 'q' is a query block; display names an input, whose adapter's titles and "
+          "descriptions it shows"),
+    ("t", "DataTable 'st': display 't' is loaded by adapter 'tsv', which declares no titles or descriptions; "
+          "adapters with them: amrfinder, mlst"),
 ])
 def test_datatable_display_from_input_shape(tmp_path, display, error):
     (tmp_path / "t.tsv").write_text("n\n1\n")
