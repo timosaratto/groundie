@@ -108,9 +108,10 @@ options: {null: NA}     # optional; only tsv and csv take options
 
 The column names come from the adapter, not from the file.
 
-Titles, which a `DataTable` shows with `display: <input>`: `mlst` titles `sample` Sample, `scheme` Scheme
-and `sequence_type` ST. `amrfinder` titles each column by AMRFinderPlus's own header, such as `Element symbol`
-and `% Identity to reference`, and `sample` Sample. No other adapter declares titles yet.
+Titles and descriptions, which a `DataTable` shows with `display: <input>`: `mlst` titles `sample` Sample,
+`scheme` Scheme and `sequence_type` ST. `amrfinder` titles each column by AMRFinderPlus's own header, such as
+`Element symbol` and `% Identity to reference`, and `sample` Sample. Both describe each of their columns. No
+other adapter declares titles or descriptions yet.
 
 The `amrfinder` columns:
 
@@ -199,7 +200,7 @@ display:
   the adapter's schema does. It matches by column name, so it works through a `query` or `sql` block too, as
   long as the name is unchanged; a column the adapter has no title for keeps its name. Make sure a column
   computed under an adapter's name still means what its description says. Only adapters that declare titles
-  can be named: see [Adapters](#adapters).
+  or descriptions can be named: see [Adapters](#adapters).
 - Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
   `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 
