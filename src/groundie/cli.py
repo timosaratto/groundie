@@ -101,6 +101,24 @@ def display(name, block):
     return {str(column): entry for column, entry in value.items()}
 
 
+SPREAD_KEYS = ("column", "names", "values")
+
+
+def spread(name, block):
+    """Take a datatable's spread key out of the block (the rest is the query): {column, names, values}, the
+    list column shown as one column per value of its structs' 'names' field, holding their 'values' field.
+    Whether the column is an output column, and its cells such lists, are checked at build."""
+    value = block.pop("spread", None)
+    if value is None:
+        return None
+    if not (isinstance(value, dict) and set(value) == set(SPREAD_KEYS)
+            and all(isinstance(text, str) and text.strip() for text in value.values())):
+        raise SpecError(f"DataTable {name!r}: 'spread' must be {{column, names, values}}, each text: the list "
+                        "column, and the fields of its structs naming the columns it spreads into and holding "
+                        "their values, e.g. {column: calls, names: locus, values: call}")
+    return value
+
+
 def display_entries(written):
     """A datatable's display as written, by column, as (titles, descriptions), each by column."""
     entries = {c: e if isinstance(e, dict) else {"title": e} for c, e in written.items()}
@@ -312,8 +330,9 @@ def parse_block(kind, name, text, line):
     if kind == "MlstTable":
         return {"type": kind, "block": mlst_table(name, block)}
     if kind == "DataTable":
-        titles = display(name, block)
-        return {"type": kind, "block": q.normalize(name, block, kind, ("display",)), "display": titles}
+        titles, spreading = display(name, block), spread(name, block)
+        return {"type": kind, "block": q.normalize(name, block, kind, ("display", "spread")), "display": titles,
+                "spread": spreading}
     grid =layout(name, block) if kind == "Matrix" else None
     return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "Matrix" else ()),
             "layout": grid}
@@ -607,7 +626,9 @@ def is_num(value):
 
 
 def cell(value, tag="td", num=False):
-    """A table cell. A null data cell shows a muted en dash."""
+    """A table cell. A null data cell shows a muted en dash; a missing one, in a spread column, is blank."""
+    if value is tables.MISSING:
+        return f"<{tag}></{tag}>"
     null = value is None and tag == "td"
     text = "–" if null else "" if value is None else html.escape(str(value))
     classes = " ".join(c for c, on in (("num", num), ("null", null)) if on)
@@ -627,9 +648,11 @@ def header(name, label, num, description=None):
 
 def render_datatable(columns, rows, caption=None, descriptions=None):
     """The datatable. columns are (name, label): the column, and the header shown; descriptions, by column,
-    are shown on hovering the header."""
+    are shown on hovering the header. A missing cell (tables.MISSING) is blank, and doesn't count towards a
+    column being numeric."""
     descriptions = descriptions or {}
-    numeric = [all(v is None or is_num(v) for v in col) and any(v is not None for v in col)
+    blank = lambda v: v is None or v is tables.MISSING
+    numeric = [all(blank(v) or is_num(v) for v in col) and not all(map(blank, col))
                for col in zip(*rows)] if rows else [False] * len(columns)
     out = ["<table>\n" + (f"<caption>{html.escape(caption)}</caption>\n" if caption else "") + "<thead>\n"]
     out.append("<tr>" + "".join(header(c, label, n, descriptions.get(c))
@@ -910,13 +933,25 @@ def build_block(con, blocks, manifest, parts, seg):
                 raise SpecError(f"{who}: display names {', '.join(map(repr, outside))}, not an output column; "
                                 f"output columns: {', '.join(columns)}")
             titles, descriptions = display_entries(written)
+        shown, hints = [(c, titles.get(c, c)) for c in columns], dict(descriptions)
+        spreading = seg["spread"]
+        if spreading:  # the list column as one column per name; its title and description are not shown
+            column = spreading["column"]
+            shown, data = tables.spread(who, shown, data, column, spreading["names"], spreading["values"])
+            titles.pop(column, None)
+            descriptions.pop(column, None)
+            i = columns.index(column)
+            spread_columns = [c for c, _ in shown[i:i + len(shown) - len(columns) + 1]]
+            hints.pop(column, None)
+            hints.update({c: f"{column}: {c}" for c in spread_columns})
+            entry["spread"] = {**spreading, "columns": spread_columns}
         if titles:
             entry["display"] = titles
         if descriptions:
             entry["descriptions"] = descriptions
-        parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data,
-                                                          descriptions=descriptions),
-                            q.to_yaml(block) + (q.dump({"display": written}) if written else ""),
+        parts.append(framed("datatable", render_datatable(shown, data, descriptions=hints),
+                            q.to_yaml(block) + (q.dump({"spread": spreading}) if spreading else "")
+                            + (q.dump({"display": written}) if written else ""),
                             q.lineage(blocks, block.source)))
     if seg["type"] == "MlstTable":
         split = tables.mlst_tables(block.name, columns, data, bool(block.sort))

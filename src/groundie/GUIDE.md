@@ -169,7 +169,7 @@ Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
 - These are all the query keys. Any other key is an error, except a `Matrix`'s layout keys and a
-  `DataTable`'s `display`.
+  `DataTable`'s `display` and `spread`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
 - `null` (or `~`) matches a missing value: `sequence_type: null` keeps the genomes with no ST, and
@@ -204,6 +204,41 @@ display:
 - Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
   `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 
+### spread
+
+A `DataTable`, and only a `DataTable`, takes `spread`: a list column of structs, such as an `mlst` input's
+`calls`, shown as one column per name, each holding that name's value.
+
+```yaml
+source: mlst
+columns: [sample, sequence_type, calls]
+spread: {column: calls, names: locus, values: call}   # a column per locus, holding its call
+display: mlst
+```
+
+- `column` is one of the block's output columns, a list of structs. `names` is the field of each struct that
+  names its column, `values` the field the cell shows. All three are required. One `spread` per table.
+- Each row stays one row. In place of `column` come the names, one column each, in the order they first appear:
+  row by row, then along each list. Above, a cohort of two schemes shows the first scheme's loci, then the
+  other's.
+- Each header is the name, `arcC`. Hovering it shows `calls: arcC`. A `display` title or description on
+  `calls` is not shown. `display` names output columns, so it can't title the spread columns.
+- A cell:
+
+  | The row's list | The cell |
+  | --- | --- |
+  | Has the name, with a value | The value |
+  | Has the name, with a null value | – |
+  | Lacks the name | Blank |
+  | Is empty | Blank, in every spread column |
+  | Is null | –, in every spread column |
+
+- When no row's list has an entry, there are no spread columns, and `column` is simply gone.
+- Errors: `column` not an output column; a cell that is neither null nor a list of structs with both fields; a
+  null name; a name twice in one row's list; a name that is another column's name.
+- Only the page changes. The SQL table the block makes, the summary line, later blocks that read it, and the
+  rows `render_blocks` returns keep `column` as the list. 'View query' shows `spread` as written.
+
 ## sql
 
 One SELECT statement in DuckDB SQL. It reads the SQL tables of inputs and of blocks above it, by name, and has
@@ -233,7 +268,8 @@ where c.call is null or not regexp_full_match(c.call, '\d+')
 ```
 
 A `DataTable` shows a list or struct cell as raw Python, e.g. `[{'locus': 'arcC', 'call': '3'}, ...]`, so a
-`DataTable` over an `mlst` input with no columns chosen shows `calls` that way. Select its fields, as above, or
+`DataTable` over an `mlst` input with no columns chosen shows `calls` that way. To show a list of structs as
+one column per name, give the `DataTable` a [`spread`](#spread). Otherwise select its fields, as above, or
 format it as text in SQL. Each genome's calls as one cell, `arcC:3, aroE:1, ...`:
 
 ```sql
