@@ -9,6 +9,7 @@ from groundie import cli
 from groundie import query as q
 from groundie.adapters import amrfinder, mash, mlst, utils
 from groundie.cli import build
+from groundie.mcp_app import tsv
 
 SPEC = Path(__file__).parent.parent / "examples" / "SAMD00654274.md"
 COHORT = Path(__file__).parent.parent / "examples" / "cohort.md"
@@ -57,7 +58,8 @@ def test_build_amr_example():
     assert "amrfinder preliminary" in out
     assert rows(SPEC) == {"st": 1, "st_2": 1, "amr": 13, "classes": 5, "virulence": 21}
     assert ('<tr><th title="The genome&#x27;s file, without directories or FASTA extension.">Sample</th>'
-            '<th class="num" title="The ST; null when none was assigned.">ST</th></tr>') in out  # display: mlst
+            '<th class="num" title="The ST; null when none was assigned.">ST</th>'
+            '<th title="calls: arcC">arcC</th>') in out  # display: mlst, then calls spread
     assert '<tr><th title="element_class">Class</th><th class="num" title="hits">Hits</th>' in out
     assert "<h2>Virulence and stress</h2>" in out
     assert "<p>From hits:</p>\n<pre>source: amrfinder\ncolumns: [element_symbol," in out
@@ -401,6 +403,134 @@ def test_datatable_display_from_input_shape(tmp_path, display, error):
 def test_display_only_on_datatable(tmp_path, fence, body):
     with pytest.raises(cli.SpecError, match="unknown key 'display'"):
         build(mlst_spec(tmp_path, block(fence, body + "display: {sample: Sample}\n")))
+
+
+SPREAD = "spread: {column: calls, names: locus, values: call}\n"
+ECOLI_LOCI = ["adk", "fumC", "gyrB", "icd", "mdh", "purA", "recA"]
+SAUREUS_LOCI = ["arcC", "aroE", "glpF", "gmk", "pta", "tpi", "yqiL"]
+
+
+def test_datatable_spread(tmp_path):
+    body = "source: mlst\ncolumns: [sample, calls, sequence_type]\nsort: [sample]\n" + SPREAD
+    path = mlst_spec(tmp_path, block("DataTable st", body))
+    out = build(path)
+    # in place of calls, a column per locus, by first appearance: E1's loci, then S0's
+    heads = re.findall(r"<th[^>]*>([^<]+)</th>", out.split("<footer")[0])
+    assert heads == ["sample", *ECOLI_LOCI, *SAUREUS_LOCI, "sequence_type"]
+    assert '<th title="calls: adk">adk</th>' in out
+    blank = "<td></td>" * 7
+    assert ("<tr><td>E1</td><td>53</td><td>40</td><td>47</td><td>13</td><td>36</td><td>28</td><td>29</td>"
+            f'{blank}<td class="num">10</td></tr>') in out
+    # a null call is a dash; a locus the genome's scheme lacks is blank
+    assert (f'<tr><td>S2</td>{blank}<td>3</td><td>3</td><td>1</td><td class="null">–</td><td>4?</td>'
+            '<td>4,5</td><td>3</td><td class="num null">–</td></tr>') in out
+    assert f'<tr><td>unknown</td>{blank * 2}<td class="num null">–</td></tr>' in out  # no calls: all blank
+    assert details(out, "datatable").startswith(
+        "\n<pre>source: mlst\ncolumns: [sample, calls, sequence_type]\nsort: [sample]\n"
+        "spread:\n  column: calls\n  names: locus\n  values: call\n</pre>")
+    page, manifest, con = cli.build_report(path)
+    assert manifest["queries"][0]["spread"] == {"column": "calls", "names": "locus", "values": "call",
+                                                "columns": [*ECOLI_LOCI, *SAUREUS_LOCI]}
+    # the SQL table, the summary and the TSV keep calls as a list
+    assert manifest["blocks"][1]["output_columns"] == ["sample", "calls", "sequence_type"]
+    assert con.execute("select calls from st where sample = 'S0'").fetchone()[0][0] == {"locus": "arcC", "call": "3"}
+    data = con.execute("select * from st").fetchall()
+    text = tsv(manifest["blocks"][1]["output_columns"], data, len(data))
+    assert text.startswith("sample\tcalls\tsequence_type\n") and "\nS0\t[{'locus': 'arcC', 'call': '3'}, " in text
+
+
+def test_datatable_spread_descriptions(tmp_path):
+    body = "source: mlst\ncolumns: [sample, sequence_type, calls]\nfilters: {sample: S1}\n" + SPREAD
+    out = build(mlst_spec(tmp_path, block("DataTable st", body + "display: mlst\n")))
+    # the hover names the list column and the name; the list column's description is not shown
+    assert '<th title="calls: arcC">arcC</th>' in out and "One call per locus" not in out
+    assert details(out, "datatable").startswith(
+        "\n<pre>source: mlst\nfilters:\n  sample: [S1]\ncolumns: [sample, sequence_type, calls]\n"
+        "spread:\n  column: calls\n  names: locus\n  values: call\ndisplay: mlst\n</pre>")
+    # a title or description on the list column is not shown, and not an error
+    path = mlst_spec(tmp_path, block("DataTable st", body + "display:\n  calls: {title: Calls, description: The calls}\n"))
+    out = build(path)
+    assert '<th title="calls: arcC">arcC</th>' in out and "Calls<" not in out and 'title="The calls' not in out
+    entry = cli.build_report(path)[1]["queries"][0]
+    assert "display" not in entry and "descriptions" not in entry
+
+
+def test_datatable_spread_null_list_and_sql_source(tmp_path):
+    sql = ("select sample, case when sample = 'S1' then null else calls end as calls from mlst "
+           "where scheme = 'saureus' order by sample\n")
+    out = build(mlst_spec(tmp_path, block("sql n", sql) + block("DataTable st", "source: n\n" + SPREAD)))
+    assert '<tr><td>S1</td>' + '<td class="null">–</td>' * 7 + "</tr>" in out  # a null list: a dash in each
+    assert "<tr><td>S0</td><td>3</td><td>3</td><td>1</td><td>1</td><td>4</td><td>4</td><td>3</td></tr>" in out
+
+
+def test_datatable_spread_query_source(tmp_path):
+    body = (block("query q", "source: mlst\ncolumns: [sample, calls]\nfilters: {scheme: ecoli_achtman_4}\n")
+            + block("DataTable st", "source: q\nsort: [sample]\n" + SPREAD))
+    out = build(mlst_spec(tmp_path, body))
+    assert re.findall(r"<th[^>]*>([^<]+)</th>", out.split("<footer")[0]) == ["sample", *ECOLI_LOCI]
+
+
+def test_datatable_spread_no_entries(tmp_path):
+    # every list empty: no spread columns, and calls is gone
+    path = mlst_spec(tmp_path, block("DataTable st", "source: mlst\ncolumns: [sample, calls]\n"
+                                                     "filters: {scheme: null}\n" + SPREAD))
+    out = build(path)
+    assert "<tr><th>sample</th></tr>" in out and "<tr><td>unknown</td></tr>" in out
+    assert cli.build_report(path)[1]["queries"][0]["spread"]["columns"] == []
+
+
+def test_spread_missing_is_not_numeric():
+    columns = [("k", "k"), ("l", "l")]
+    rows = [("a", [{"n": "x", "v": 1}, {"n": "y", "v": None}]), ("b", [{"n": "y", "v": 2}]), ("c", None)]
+    shown, spread = cli.tables.spread("DataTable 't'", columns, rows, "l", "n", "v")
+    assert shown == [("k", "k"), ("x", "x"), ("y", "y")]
+    assert spread == [("a", 1, None), ("b", cli.tables.MISSING, 2), ("c", None, None)]
+    out = cli.render_datatable(shown, spread)
+    assert '<th class="num">x</th><th class="num">y</th>' in out
+    assert '<tr><td>b</td><td></td><td class="num">2</td></tr>' in out
+
+
+@pytest.mark.parametrize("body, error", [
+    ("spread: calls\n", "spec.md:5: DataTable 'st': 'spread' must be {column, names, values}, each text: the list "
+                        "column, and the fields of its structs naming the columns it spreads into and holding their "
+                        "values, e.g. {column: calls, names: locus, values: call}"),
+    ("spread: {column: calls, names: locus}\n", "DataTable 'st': 'spread' must be {column, names, values}"),
+    ("spread: {column: calls, names: locus, values: call, fill: x}\n", "DataTable 'st': 'spread' must be"),
+    ("spread: {column: calls, names: locus, values: 1}\n", "DataTable 'st': 'spread' must be"),
+    ("columns: [sample, sequence_type]\n" + SPREAD,
+     "spec.md:5: DataTable 'st': spread names 'calls', not an output column; output columns: sample, sequence_type"),
+    ("sort: [sample]\nspread: {column: sample, names: locus, values: call}\n",
+     "DataTable 'st': spread 'sample': row 1 holds 'E1', not a list of {locus, call}"),
+    ("sort: [sample]\nspread: {column: calls, names: name, values: call}\n",
+     "DataTable 'st': spread 'calls': row 1 holds [{'locus': 'adk', 'call': '53'}"),
+    ("sort: [sample]\nspread: {column: calls, names: call, values: locus}\n",
+     "DataTable 'st': spread 'calls': row 3 has call '3' twice"),  # S0: arcC(3), aroE(3)
+])
+def test_datatable_spread_shape(tmp_path, body, error):
+    with pytest.raises(cli.SpecError, match=re.escape(error)):
+        build(mlst_spec(tmp_path, block("DataTable st", "source: mlst\n" + body)))
+
+
+@pytest.mark.parametrize("calls, error", [
+    ("[{'locus': 'a', 'call': '1'}, {'locus': null, 'call': '2'}]", "spread 'calls': row 1 has a null locus"),
+    ("[{'locus': 'sample', 'call': '1'}]",
+     "spread 'calls': locus 'sample' is the name of another column; other columns: sample"),
+    ("[1, 2]", "spread 'calls': row 1 holds [1, 2], not a list of {locus, call}"),
+])
+def test_datatable_spread_cells(tmp_path, calls, error):
+    body = block("sql n", f"select 'x' as sample, {calls} as calls\n") + block("DataTable st", "source: n\n" + SPREAD)
+    with pytest.raises(cli.SpecError, match=re.escape(f"DataTable 'st': {error}")):
+        build(mlst_spec(tmp_path, body))
+
+
+@pytest.mark.parametrize("fence, body", [
+    ("query q", "source: mlst\n"),
+    ("Matrix q", "source: mlst\nrows: sample\ncols: scheme\n"),
+    ("MlstTable q", "source: mlst\n"),
+])
+def test_spread_only_on_datatable(tmp_path, fence, body):
+    with pytest.raises(cli.SpecError, match=f"{fence.split()[0]} 'q': unknown key 'spread'"):
+        build(mlst_spec(tmp_path, block(fence, body + SPREAD)))
 
 
 def test_mlst_table_loci_disagree(tmp_path):
@@ -874,7 +1004,7 @@ def test_block_kind_in_messages(tmp_path):
 
 def test_unknown_query_key(tmp_path):
     with pytest.raises(ValueError, match=r"^spec.md:6: DataTable 't': unknown key 'filter'; accepted: source, "
-                                         "columns, filters, group_by, measures, sort, display$"):
+                                         "columns, filters, group_by, measures, sort, display, spread$"):
         build(spec(tmp_path, block("DataTable t", "source: amrfinder\nfilter:\n  sample: x\n")))
     with pytest.raises(ValueError, match=r"^spec.md:6: query 't': unknown key 'result'; accepted: source, "):
         build(spec(tmp_path, block("query t", "result: amrfinder\n")))
