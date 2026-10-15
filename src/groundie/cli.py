@@ -82,19 +82,30 @@ def layout(name, block):
 
 
 def display(name, block):
-    """Take a datatable's display key out of the block (the rest is the query): each column's title, by
-    column, or the name of an input whose adapter's titles it shows. Whether the titles name output columns,
-    and the input is one, are checked later, when they are known."""
+    """Take a datatable's display key out of the block (the rest is the query), as written: by column, its
+    title, or {title, description}, either or both; or the name of an input whose adapter's titles and
+    descriptions it shows. Whether the columns are output columns, and the input is one, are checked later,
+    when they are known."""
     value = block.pop("display", None) or {}
     if isinstance(value, str):
         return value
     if not isinstance(value, dict):
         raise SpecError(f"DataTable {name!r}: 'display' maps columns to their titles, e.g. {{sequence_type: ST}}, "
                         "or names an input whose adapter's titles it shows")
-    for column, title in value.items():
-        if not isinstance(title, str) or not title.strip():
-            raise SpecError(f"DataTable {name!r}: display {str(column)!r} must be text, the column's title")
-    return {str(column): title for column, title in value.items()}
+    for column, entry in value.items():
+        parts = entry if isinstance(entry, dict) else {"title": entry}
+        if (not parts or set(parts) - {"title", "description"}
+                or not all(isinstance(text, str) and text.strip() for text in parts.values())):
+            raise SpecError(f"DataTable {name!r}: display {str(column)!r} must be text, the column's title, "
+                            "or {title, description}, either or both, each text")
+    return {str(column): entry for column, entry in value.items()}
+
+
+def display_entries(written):
+    """A datatable's display as written, by column, as (titles, descriptions), each by column."""
+    entries = {c: e if isinstance(e, dict) else {"title": e} for c, e in written.items()}
+    return ({c: e["title"] for c, e in entries.items() if "title" in e},
+            {c: e["description"] for c, e in entries.items() if "description" in e})
 
 
 AMRFINDER_MATRIX_KEYS = ("source", "filters", "sort", "partial_below")
@@ -601,20 +612,25 @@ def cell(value, tag="td", num=False):
     return f"<{tag}{cls}>{text}</{tag}>"
 
 
-def header(name, label, num):
-    """A column header. A label other than the column's name keeps the name in its title."""
-    if label == name:
+def header(name, label, num, description=None):
+    """A column header. Its title, shown on hover, is its description; without one, a label other than the
+    column's name keeps the name there."""
+    hint = description or (name if label != name else None)
+    if hint is None:
         return cell(name, "th", num)
     cls = ' class="num"' if num else ""
-    return f'<th{cls} title="{html.escape(name)}">{html.escape(label)}</th>'
+    return f'<th{cls} title="{html.escape(hint)}">{html.escape(label)}</th>'
 
 
-def render_datatable(columns, rows, caption=None):
-    """The datatable. columns are (name, label): the column, and the header shown."""
+def render_datatable(columns, rows, caption=None, descriptions=None):
+    """The datatable. columns are (name, label): the column, and the header shown; descriptions, by column,
+    are shown on hovering the header."""
+    descriptions = descriptions or {}
     numeric = [all(v is None or is_num(v) for v in col) and any(v is not None for v in col)
                for col in zip(*rows)] if rows else [False] * len(columns)
     out = ["<table>\n" + (f"<caption>{html.escape(caption)}</caption>\n" if caption else "") + "<thead>\n"]
-    out.append("<tr>" + "".join(header(c, label, n) for (c, label), n in zip(columns, numeric)) + "</tr>\n")
+    out.append("<tr>" + "".join(header(c, label, n, descriptions.get(c))
+                                for (c, label), n in zip(columns, numeric)) + "</tr>\n")
     out.append("</thead>\n<tbody>\n")
     for row in rows:
         out.append("<tr>" + "".join(cell(v, "td", n) for v, n in zip(row, numeric)) + "</tr>\n")
@@ -879,18 +895,22 @@ def build_block(con, blocks, manifest, parts, seg):
         data = con.execute(f"select * from {ident(block.name)}").fetchall()
     if seg["type"] == "DataTable":
         written = seg["display"]
-        if isinstance(written, str):  # an input: its adapter's titles, for the columns that have one
-            declared = ADAPTERS[blocks[written].adapter].TITLES
-            titles = {c: declared[c] for c in columns if c in declared}
+        if isinstance(written, str):  # an input: its adapter's titles and descriptions, for the columns that have one
+            adapter = ADAPTERS[blocks[written].adapter]
+            titles = {c: adapter.TITLES[c] for c in columns if c in adapter.TITLES}
+            descriptions = {c: adapter.DESCRIPTIONS[c] for c in columns if c in adapter.DESCRIPTIONS}
         else:
-            titles = written
-            outside = [c for c in titles if c not in columns]
+            outside = [c for c in written if c not in columns]
             if outside:
                 raise SpecError(f"{who}: display names {', '.join(map(repr, outside))}, not an output column; "
                                 f"output columns: {', '.join(columns)}")
+            titles, descriptions = display_entries(written)
         if titles:
             entry["display"] = titles
-        parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data),
+        if descriptions:
+            entry["descriptions"] = descriptions
+        parts.append(framed("datatable", render_datatable([(c, titles.get(c, c)) for c in columns], data,
+                                                          descriptions=descriptions),
                             q.to_yaml(block) + (q.dump({"display": written}) if written else ""),
                             q.lineage(blocks, block.source)))
     if seg["type"] == "MlstTable":

@@ -178,21 +178,28 @@ group, sorted and joined with `, `, and `distinct(column)`, the same with each v
 
 ### display
 
-A `DataTable`, and only a `DataTable`, takes `display`: a title for some of its columns, shown as the header in
-place of the column's name.
+A `DataTable`, and only a `DataTable`, takes `display`: for some of its columns, a title, shown as the header in
+place of the column's name, and a description, shown on hovering the header.
 
 ```yaml
 source: mlst
-columns: [sample, sequence_type]
+columns: [sample, scheme, sequence_type]
 display:
-  sequence_type: ST        # the header shows ST; the column's name stays in its title
+  sequence_type: ST        # the header shows ST; hovering it shows sequence_type, the column's name
+  scheme: {title: Scheme, description: The PubMLST scheme mlst matched}
+  sample: {description: The genome's file name, without its extension}   # the header stays sample
 ```
 
-- Each key is one of the block's output columns; each title is text.
-- `display` may instead name an input, whose adapter's titles it shows: `display: mlst` titles `sample`,
-  `scheme` and `sequence_type` as `Sample`, `Scheme` and `ST`. It matches by column name, so it works through
-  a `query` or `sql` block too, as long as the name is unchanged; a column the adapter has no title for keeps
-  its name. Only adapters that declare titles can be named: see [Adapters](#adapters).
+- Each key is one of the block's output columns. Its value is the title, as text, or `{title, description}`,
+  either or both, each text.
+- Hovering a header with a description shows the description. Hovering one with a title and no description
+  shows the column's name.
+- `display` may instead name an input, whose adapter's titles and descriptions it shows: `display: mlst`
+  titles `sample`, `scheme` and `sequence_type` as `Sample`, `Scheme` and `ST`, and describes each column as
+  the adapter's schema does. It matches by column name, so it works through a `query` or `sql` block too, as
+  long as the name is unchanged; a column the adapter has no title for keeps its name. Make sure a column
+  computed under an adapter's name still means what its description says. Only adapters that declare titles
+  can be named: see [Adapters](#adapters).
 - Only the page changes. The SQL table the block makes, later blocks that read it, and the rows
   `render_blocks` returns keep the column's name: `sequence_type`, not `ST`.
 

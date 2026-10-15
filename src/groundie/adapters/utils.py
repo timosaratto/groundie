@@ -30,9 +30,11 @@ read_csv(filename = true) gives; so two files of an input that give the same val
 
 A field may also have a title, column(3, title="ST"): the header a datatable shows for it when its display
 names the input, 'display: mlst'. A column named in the header is titled by that name unless it says
-otherwise.
+otherwise. The field's docstring is then its description, shown on hovering the header, so write it for
+the report's reader too.
 
-The class gives the SQL COLUMNS, the JSON SCHEMA, the TITLES and the rows that cli.load_input expects."""
+The class gives the SQL COLUMNS, the JSON SCHEMA, the TITLES and DESCRIPTIONS, and the rows that
+cli.load_input expects."""
 
 import ast
 import inspect
@@ -201,6 +203,7 @@ class Adapter:
                 raise TypeError(f"{cls.__name__}.{name}: {problem}")
         cls.COLUMNS = tuple((name, sql_type(f.hint)) for name, f in cls.FIELDS.items())
         cls.TITLES = {name: f.title for name, f in cls.FIELDS.items() if f.title}
+        cls.DESCRIPTIONS = {name: f.doc for name, f in cls.FIELDS.items() if f.doc}
         cls.SCHEMA = {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": f"{cls.NAME} result",
                       **object_type(cls)}
 

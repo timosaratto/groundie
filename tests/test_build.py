@@ -56,7 +56,8 @@ def test_build_amr_example():
     assert "<h2>AMR hits</h2>" in out
     assert "amrfinder preliminary" in out
     assert rows(SPEC) == {"st": 1, "st_2": 1, "amr": 13, "classes": 5, "virulence": 21}
-    assert '<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th></tr>' in out  # display: mlst
+    assert ('<tr><th title="The genome&#x27;s file, without directories or FASTA extension.">Sample</th>'
+            '<th class="num" title="The ST; null when none was assigned.">ST</th></tr>') in out  # display: mlst
     assert '<tr><th title="element_class">Class</th><th class="num" title="hits">Hits</th>' in out
     assert "<h2>Virulence and stress</h2>" in out
     assert "<p>From hits:</p>\n<pre>source: amrfinder\ncolumns: [element_symbol," in out
@@ -315,6 +316,22 @@ def test_datatable_display(tmp_path):
     assert [c[0] for c in con.execute("describe st").fetchall()] == ["sample", "sequence_type"]
 
 
+def test_datatable_display_descriptions(tmp_path):
+    body = ("source: mlst\ncolumns: [sample, scheme, sequence_type]\nsort: [sample]\ndisplay:\n"
+            "  sample: {description: The <genome>}\n  scheme: Scheme\n"
+            "  sequence_type: {title: ST, description: The sequence type}\n")
+    path = mlst_spec(tmp_path, block("DataTable st", body))
+    out = build(path)
+    # a description replaces the column's name on hover; a title alone keeps it there
+    assert ('<tr><th title="The &lt;genome&gt;">sample</th><th title="scheme">Scheme</th>'
+            '<th class="num" title="The sequence type">ST</th></tr>') in out
+    assert ("  scheme: Scheme\n  sequence_type:\n    title: ST\n    description: The sequence type\n"
+            in details(out, "datatable"))  # as written
+    page, manifest, con = cli.build_report(path)
+    assert manifest["queries"][0]["display"] == {"scheme": "Scheme", "sequence_type": "ST"}
+    assert manifest["queries"][0]["descriptions"] == {"sample": "The <genome>", "sequence_type": "The sequence type"}
+
+
 def test_datatable_display_every_column(tmp_path):
     # without 'columns', display may name any column of the source
     out = build(mlst_spec(tmp_path, block("DataTable st", "source: mlst\ndisplay: {scheme: Scheme}\n")))
@@ -325,9 +342,15 @@ def test_datatable_display_every_column(tmp_path):
     ("columns: [sample, sequence_type]\ndisplay: {st: ST}\n",
      "spec.md:5: DataTable 'st': display names 'st', not an output column; output columns: sample, sequence_type"),
     ("display: {st: ST}\n", "display names 'st', not an output column; output columns: sample, scheme, sequence_type, calls"),
-    ("display: {sequence_type: 7}\n", "DataTable 'st': display 'sequence_type' must be text, the column's title"),
-    ("display: {sequence_type: {title: ST}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: 7}\n", "DataTable 'st': display 'sequence_type' must be text, the column's title, "
+                                      "or {title, description}, either or both, each text"),
     ("display: {sequence_type: ''}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: {}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: {title: ST, digits: 1}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: {description: 7}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: {title: ' '}}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {sequence_type: [ST]}\n", "display 'sequence_type' must be text, the column's title"),
+    ("display: {st: {title: ST}}\n", "display names 'st', not an output column"),
     ("display: [sequence_type]\n", "DataTable 'st': 'display' maps columns to their titles, e.g. {sequence_type: ST}, "
                                    "or names an input whose adapter's titles it shows"),
 ])
@@ -337,16 +360,21 @@ def test_datatable_display_shape(tmp_path, body, error):
 
 
 def test_datatable_display_from_input(tmp_path):
-    # the adapter's titles, by column name, through a sql block; a column it has no title for keeps its name
+    # the adapter's titles and descriptions, by column name, through a sql block; a column it has neither
+    # for keeps its name
     body = (block("sql n", "select sample, sequence_type, 1 as one from mlst order by sample\n")
             + block("DataTable st", "source: n\ndisplay: mlst\n"))
     path = mlst_spec(tmp_path, body)
     out = build(path)
-    assert ('<tr><th title="sample">Sample</th><th class="num" title="sequence_type">ST</th>'
+    assert ('<tr><th title="The genome&#x27;s file, without directories or FASTA extension.">'
+            'Sample</th><th class="num" title="The ST; null when none was assigned.">ST</th>'
             '<th class="num">one</th></tr>') in out
     assert details(out, "datatable").startswith("\n<pre>source: n\ndisplay: mlst\n</pre>")  # as written
     page, manifest, con = cli.build_report(path)
     assert manifest["queries"][0]["display"] == {"sample": "Sample", "sequence_type": "ST"}  # as resolved
+    assert manifest["queries"][0]["descriptions"] == {
+        "sample": "The genome's file, without directories or FASTA extension.",
+        "sequence_type": "The ST; null when none was assigned."}
     assert [c[0] for c in con.execute("describe st").fetchall()] == ["sample", "sequence_type", "one"]
 
 
@@ -1072,6 +1100,8 @@ def test_adapter_titles():
     assert properties["sequence_type"]["title"] == "ST"
     assert properties["sequence_type"]["description"] == "The ST; null when none was assigned."
     assert "title" not in properties["calls"]
+    assert mlst.Mlst.DESCRIPTIONS["calls"] == properties["calls"]["description"]  # the docstrings, as in the schema
+    assert set(mlst.Mlst.DESCRIPTIONS) == set(properties)
     titles = amrfinder.Amrfinder.TITLES  # by default, the header's name
     assert titles["sample"] == "Sample" and titles["pct_identity"] == "% Identity to reference"
     assert len(titles) == len(amrfinder.Amrfinder.COLUMNS)
