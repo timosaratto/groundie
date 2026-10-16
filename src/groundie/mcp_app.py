@@ -65,7 +65,7 @@ def render_blocks(
     text = [cli.summary_line(manifest["file"]["path"], b) for b in listed]
     text += [f"warning: {w}" for w in manifest["warnings"]]
     for i, b in enumerate(listed):
-        if b["kind"] in (*cli.TABLES, *cli.MATRICES) or (i == len(listed) - 1 and b["kind"] != "Tree"):
+        if b["kind"] in ("DataTable", *cli.MATRICES) or (i == len(listed) - 1 and b["kind"] != "Tree"):
             rows = con.execute(f"select * from {ident(b['name'])} limit {MAX_ROWS}").fetchall()
             text.append(f"\n{b['kind']} {b['name']}:\n{tsv(b['output_columns'], rows, b['rows'])}")
     con.close()

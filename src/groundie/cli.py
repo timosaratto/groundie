@@ -24,11 +24,9 @@ from groundie.query import SpecError, ident
 
 BLOCK = re.compile(r"^```(\w+) (\w+)\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
 # Data blocks are lowercase; display blocks, which show something, are PascalCase, like JSX components.
-KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "DataTable", "Matrix", "AmrfinderMatrix",
-         "MlstTable", "Tree")
+KINDS = ("input", "sql", "query", "clusters", "checks", "calls", "DataTable", "Matrix", "AmrfinderMatrix", "Tree")
 MATRICES = ("Matrix", "AmrfinderMatrix")
-TABLES = ("DataTable", "MlstTable")
-SUGAR = {"AmrfinderMatrix": "amrfinder", "MlstTable": "mlst"}  # a block kind for one adapter's input
+SUGAR = {"AmrfinderMatrix": "amrfinder"}  # a block kind for one adapter's input
 INPUT_KEYS = ("adapter", "path", "paths", "options")
 LAYOUT_KEYS = ("rows", "cols", "value", "scale", "digits", "mark", "pick", "symmetric")
 PICK = re.compile(r"(max|min)\((\w+)\)")
@@ -119,6 +117,17 @@ def spread(name, block):
     return value
 
 
+def split(name, block):
+    """Take a datatable's split key out of the block (the rest is the query): the column whose values split
+    its rows into one table each. Whether it is an output column, and its cells single values, are checked at
+    build."""
+    value = block.pop("split", None)
+    if value is not None and not (isinstance(value, str) and value.strip()):
+        raise SpecError(f"DataTable {name!r}: 'split' must be one output column, whose values split the rows "
+                        "into one table each, e.g. scheme")
+    return value
+
+
 def display_entries(written):
     """A datatable's display as written, by column, as (titles, descriptions), each by column."""
     entries = {c: e if isinstance(e, dict) else {"title": e} for c, e in written.items()}
@@ -146,18 +155,6 @@ def amrfinder_matrix(name, block):
     rows = ["element_symbol"] if len(query.filters.get("element_type", [])) == 1 else ["element_type", "element_symbol"]
     query.columns = [*rows, "sample", "pct_identity", "pct_coverage"]
     return query, Layout(rows, "sample", mark={"column": "pct_coverage", "below": partial_below}, pick="max(pct_coverage)")
-
-
-MLST_TABLE_KEYS = ("source", "filters", "sort")
-
-
-def mlst_table(name, block):
-    """An MlstTable block as its query: every column of the mlst input. The tables are split at build."""
-    unknown = [k for k in block if k not in MLST_TABLE_KEYS]
-    if unknown:
-        raise SpecError(f"MlstTable {name!r}: unknown key {', '.join(map(repr, unknown))}; accepted: "
-                         f"{', '.join(MLST_TABLE_KEYS)}. For other columns, use a DataTable")
-    return q.normalize(name, block, "MlstTable")
 
 
 @dataclass
@@ -327,12 +324,10 @@ def parse_block(kind, name, text, line):
     if kind == "AmrfinderMatrix":
         query, grid = amrfinder_matrix(name, block)
         return {"type": kind, "block": query, "layout": grid}
-    if kind == "MlstTable":
-        return {"type": kind, "block": mlst_table(name, block)}
     if kind == "DataTable":
-        titles, spreading = display(name, block), spread(name, block)
-        return {"type": kind, "block": q.normalize(name, block, kind, ("display", "spread")), "display": titles,
-                "spread": spreading}
+        titles, spreading, splitting = display(name, block), spread(name, block), split(name, block)
+        return {"type": kind, "block": q.normalize(name, block, kind, ("display", "spread", "split")),
+                "display": titles, "spread": spreading, "split": splitting}
     grid =layout(name, block) if kind == "Matrix" else None
     return {"type": kind, "block": q.normalize(name, block, kind, LAYOUT_KEYS if kind == "Matrix" else ()),
             "layout": grid}
@@ -886,7 +881,7 @@ def build_report(path, text=None, base_dir=None):
 
 def build_block(con, blocks, manifest, parts, seg):
     """Run one block, append its HTML to parts and its entries to the manifest. Returns its summary: name,
-    rows and output columns, or for a tree, tips and matched tips."""
+    rows and output columns, and for a split datatable its tables; or for a tree, tips and matched tips."""
     block, who = seg["block"], f"{seg['type']} {seg['block'].name!r}"
     if seg["type"] == "Tree":
         figure, notes, entry = tree.render(con, blocks, block)
@@ -934,34 +929,41 @@ def build_block(con, blocks, manifest, parts, seg):
                                 f"output columns: {', '.join(columns)}")
             titles, descriptions = display_entries(written)
         shown, hints = [(c, titles.get(c, c)) for c in columns], dict(descriptions)
-        spreading = seg["spread"]
-        if spreading:  # the list column as one column per name; its title and description are not shown
-            column = spreading["column"]
-            shown, data = tables.spread(who, shown, data, column, spreading["names"], spreading["values"])
-            titles.pop(column, None)
-            descriptions.pop(column, None)
-            i = columns.index(column)
-            spread_columns = [c for c, _ in shown[i:i + len(shown) - len(columns) + 1]]
-            hints.pop(column, None)
-            hints.update({c: f"{column}: {c}" for c in spread_columns})
-            entry["spread"] = {**spreading, "columns": spread_columns}
+        spreading, by = seg["spread"], seg["split"]
+        if spreading:  # its title and description are not shown
+            titles.pop(spreading["column"], None)
+            descriptions.pop(spreading["column"], None)
+            hints.pop(spreading["column"], None)
+        # split first, then spread each table on its own, so that it gets only its own names
+        groups = [(f"{who}: {by} {value!r}", f"{titles.get(by, by)}: {'–' if value is None else value}", group)
+                  for value, group in tables.split(who, columns, data, by).items()] if by else []
+        body, spread_columns = [], {}
+        for where, caption, group in groups or [(who, None, data)]:  # no split, or no rows: one uncaptioned table
+            table_columns = shown
+            if spreading:  # the list column as one column per name
+                column = spreading["column"]
+                table_columns, group = tables.spread(where, shown, group, column, spreading["names"],
+                                                     spreading["values"])
+                i = columns.index(column)
+                names = [c for c, _ in table_columns[i:i + len(table_columns) - len(columns) + 1]]
+                spread_columns.update(dict.fromkeys(names))
+                hints.update({c: f"{column}: {c}" for c in names})
+            body.append(render_datatable(table_columns, group, caption, hints))
+        if spreading:
+            entry["spread"] = {**spreading, "columns": list(spread_columns)}
+        if by:
+            entry["split"] = by
         if titles:
             entry["display"] = titles
         if descriptions:
             entry["descriptions"] = descriptions
-        parts.append(framed("datatable", render_datatable(shown, data, descriptions=hints),
-                            q.to_yaml(block) + (q.dump({"spread": spreading}) if spreading else "")
+        parts.append(framed("datatable", "".join(body),
+                            q.to_yaml(block) + (q.dump({"split": by}) if by else "")
+                            + (q.dump({"spread": spreading}) if spreading else "")
                             + (q.dump({"display": written}) if written else ""),
                             q.lineage(blocks, block.source)))
-    if seg["type"] == "MlstTable":
-        split = tables.mlst_tables(block.name, columns, data, bool(block.sort))
-        entry["tables"] = [{"caption": t.caption, "columns": [c for c, _ in t.columns], "rows": len(t.rows)}
-                           for t in split]
-        body = "".join(render_datatable(t.columns, t.rows, t.caption) for t in split) or render_datatable(
-            [(c, c) for c in columns], [])
-        parts.append(framed("datatable", body, q.to_yaml(block), q.lineage(blocks, block.source),
-                            () if block.sort else (tables.DEFAULT_ORDER,)))
-        return {**summary(rows, columns), "tables": len(split)}
+        if by:
+            return {**summary(rows, columns), "tables": len(groups)}
     if seg["type"] in MATRICES:
         entry["layout"] = vars(seg["layout"])
         grid_yaml = q.dump({k: v for k, v in vars(seg["layout"]).items() if v not in (None, False)})

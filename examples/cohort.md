@@ -19,9 +19,13 @@ path: ../data/tree_results/cohort.nwk
 
 One row per genome, from mlst, one table per scheme, headed by the scheme's loci. A – means no ST was assigned, or, in a call, no allele was found. In a call, `~` marks a novel allele and `?` a partial match.
 
-```MlstTable st
+```DataTable st
 source: mlst
-sort: [sample]
+columns: [sample, scheme, sequence_type, calls]
+split: scheme
+spread: {column: calls, names: locus, values: call}
+display: mlst
+sort: [scheme, sample]
 ```
 
 ## Cohort summary

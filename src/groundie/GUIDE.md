@@ -39,7 +39,6 @@ lowercase.
 | `DataTable` | A datatable | Yes: the rows it shows |
 | `Matrix` | A grid | Yes: its query's rows, not the pivoted grid |
 | `AmrfinderMatrix` | A gene × sample grid of AMRFinderPlus hits | Yes: as a `Matrix` |
-| `MlstTable` | One datatable of mlst results per scheme, headed by its loci | Yes: its query's rows, not the split tables |
 | `Tree` | A phylogeny | No |
 
 The source of a block is the block it reads, named by its `source:` key. Every block except a `Tree` makes an
@@ -169,7 +168,7 @@ Measures: `count`, `min`, `max`, `sum` and `avg`, and two that give text: `list(
 group, sorted and joined with `, `, and `distinct(column)`, the same with each value once. Both skip nulls.
 
 - These are all the query keys. Any other key is an error, except a `Matrix`'s layout keys and a
-  `DataTable`'s `display` and `spread`.
+  `DataTable`'s `display`, `spread` and `split`.
 - Filter values are written as text and read as the column's type: `sequence_type: 258` matches the number
   258, and `sample: 007` the text `007`, not `7`.
 - `null` (or `~`) matches a missing value: `sequence_type: null` keeps the genomes with no ST, and
@@ -220,7 +219,7 @@ display: mlst
   names its column, `values` the field the cell shows. All three are required. One `spread` per table.
 - Each row stays one row. In place of `column` come the names, one column each, in the order they first appear:
   row by row, then along each list. Above, a cohort of two schemes shows the first scheme's loci, then the
-  other's.
+  other's; to give each scheme its own table, add a [`split`](#split).
 - Each header is the name, `arcC`. Hovering it shows `calls: arcC`. A `display` title or description on
   `calls` is not shown. `display` names output columns, so it can't title the spread columns.
 - A cell:
@@ -238,6 +237,34 @@ display: mlst
   null name; a name twice in one row's list; a name that is another column's name.
 - Only the page changes. The SQL table the block makes, the summary line, later blocks that read it, and the
   rows `render_blocks` returns keep `column` as the list. 'View query' shows `spread` as written.
+
+### split
+
+A `DataTable`, and only a `DataTable`, takes `split`: one of its output columns, whose values split its rows into
+one table each, captioned with the value. mlst results, one table per scheme, each headed by its own loci:
+
+```yaml
+source: mlst
+columns: [sample, scheme, sequence_type, calls]
+split: scheme                                         # a table per scheme
+spread: {column: calls, names: locus, values: call}   # in each, a column per locus of that scheme
+display: mlst
+sort: [scheme, sample]
+```
+
+- The tables, and the rows in each, come in the order their first row appears: give `sort` to set both. A
+  null is a value like any other.
+- Each table's caption is the column's title and the value: `Scheme: saureus`. The title is the column's
+  `display` title, or its name. A null shows as `Scheme: –`.
+- The split column stays in each table, as an ordinary column.
+- With `spread`, each table is spread on its own, so it gets only its own names: a cohort of two schemes
+  gives two tables, each with its scheme's loci. A row that lacks a name another row of its table has shows
+  blank, as `spread` does.
+- With no rows, there is one empty table, with no caption.
+- Errors: `split` not one output column; a cell that is a list or struct.
+- The SQL table the block makes, later blocks that read it, and the rows `render_blocks` returns stay one
+  table. Besides the page, only the summary line changes: it counts the tables, `10 rows in 2 tables`. 'View
+  query' shows `split` as written.
 
 ## sql
 
@@ -395,29 +422,6 @@ partial_below: 80                         # optional: ◆ marks coverage below t
   `partial_below`).
 - 'View query' shows the `Matrix` it stands for, every setting written out.
 
-## MlstTable
-
-mlst results as one datatable per scheme, captioned with the scheme. The scheme's locus names are the
-headers and the cells hold the calls: the input's `{locus: arcC, call: 3}` shows as `3` under `arcC`.
-
-```yaml
-source: mlst                  # an input loaded by the mlst adapter
-filters: {scheme: saureus}    # optional: any filters on the input's columns
-sort: [sample]                # optional
-```
-
-- It takes `source`, `filters` and `sort`. For other columns, write a `DataTable`.
-- The columns are `Sample`, `ST`, then the scheme's loci. `Sample` and `ST` keep their column's name in
-  their header's `title`.
-- Allele numbers compare only within a scheme, so each scheme gets its own table. Genomes with no scheme
-  found get the last table, `No scheme found`, with no loci.
-- Without `sort`, the tables go by how many genomes they hold, most first, then by scheme, and the rows by
-  sample. With `sort`, both follow the sorted result.
-- Filters and sort read the input's columns: `sample`, `scheme` and `sequence_type`. To pick genomes by a
-  call, write a `sql` block over the input and read it with a `DataTable`.
-- Genomes of one scheme calling different loci are an error.
-- A block that reads it gets its query's rows, as the input has them, not the split tables.
-
 ## Tree
 
 ```yaml
@@ -442,7 +446,7 @@ A tip with no matching row is drawn and reported, not an error. Check the summar
 
 The output adds these itself, so leave them out of the prose:
 
-- under each `DataTable` (an `MlstTable` included), `Matrix` (an `AmrfinderMatrix` included) and `Tree`: its filters, its query, and its
+- under each `DataTable`, `Matrix` (an `AmrfinderMatrix` included) and `Tree`: its filters, its query, and its
   lineage, a walk back through its sources to the inputs, each with its settings or, for a `sql` block, its
   statement
 - in a built report: a provenance footer listing every data file with its hash
@@ -555,8 +559,8 @@ The text result, which only you see, holds:
 
 - one summary line per block, as the CLI prints them, with `blocks` as the file name for inline text
 - the warnings
-- the rows, as TSV, of each `DataTable` and `Matrix` (an `MlstTable` and an `AmrfinderMatrix` included: their
-  query's rows), and of the last block
+- the rows, as TSV, of each `DataTable` and `Matrix` (an `AmrfinderMatrix` included: its query's rows), and
+  of the last block
   unless it is a `Tree`: an `input`, `sql`, `query`, `clusters`, `checks` or `calls`. At most 200 rows per
   block; the rest are counted, not listed.
 
