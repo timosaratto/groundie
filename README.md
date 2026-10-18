@@ -27,7 +27,7 @@ source: tree
 ```
 ````
 
-...will be rendered as this report<img width="1120" height="479" alt="CleanShot 2026-10-18 at 17 21 59" src="https://github.com/user-attachments/assets/fe2aaafb-70b6-4968-b229-d9c3834b11a7" />
+...will be rendered as this report
 <img width="1135" height="444" alt="CleanShot 2026-10-18 at 17 12 33 1" src="https://github.com/user-attachments/assets/9cc25a44-e802-47ae-8575-e8b977c6e7fa" />
 
 While this template
